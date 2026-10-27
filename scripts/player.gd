@@ -41,6 +41,7 @@ var is_invulnerable: bool:
 
 
 func _ready() -> void:
+	add_to_group("player")
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 	_setup_contact_shadow()
