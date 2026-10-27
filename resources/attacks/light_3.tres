@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="AttackData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://resources/attacks/attack_data.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "灰铃·终式"
+windup = 0.20
+active_duration = 0.15
+recovery = 0.44
+damage = 24.0
+reach = 1.48
+hit_radius = 0.70
+knockback = 7.0
+combo_buffer_open = 0.0
+combo_buffer_close = 0.0
+dodge_cancel_open = 0.42

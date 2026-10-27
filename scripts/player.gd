@@ -7,6 +7,7 @@ const WALK_ATLAS_PATH := "res://assets/player/pilgrim_walk_atlas.png"
 const IDLE_STRIP_PATH := "res://assets/player/pilgrim_idle_strip.png"
 const ACTION_ATLAS_PATH := "res://assets/player/pilgrim_action_atlas.png"
 const PLAYER_HEIGHT := 1.60
+const ATTACK_DATA_PATHS := ["res://resources/attacks/light_1.tres", "res://resources/attacks/light_2.tres", "res://resources/attacks/light_3.tres"]
 
 @export_range(1.0, 8.0, 0.1) var move_speed := 4.25
 @export_range(0.1, 0.5, 0.01) var dodge_duration := 0.34
@@ -26,6 +27,13 @@ var _invulnerability_timer := 0.0
 var _attack_locked := false
 var _dead := false
 var _arena: Node
+var _attack_data: Array[AttackData] = []
+var _attack_stage := -1
+var _attack_elapsed := 0.0
+var _attack_hit_targets: Dictionary = {}
+var _combo_buffered := false
+var _attack_direction := Vector3(0.0, 0.0, 1.0)
+var _feedback: CombatFeedback
 
 var is_invulnerable: bool:
 	get:
@@ -44,6 +52,9 @@ func _ready() -> void:
 	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
 	sprite.animation_finished.connect(_on_animation_finished)
 	_arena = get_parent()
+	_feedback = get_node_or_null("CombatFeedback") as CombatFeedback
+	for path in ATTACK_DATA_PATHS:
+		_attack_data.append(load(path) as AttackData)
 	_play_directional("idle", _facing)
 	_update_camera_target()
 
@@ -54,6 +65,8 @@ func _physics_process(delta: float) -> void:
 	_dodge_timer = maxf(0.0, _dodge_timer - delta)
 	_dodge_cooldown_timer = maxf(0.0, _dodge_cooldown_timer - delta)
 	_invulnerability_timer = maxf(0.0, _invulnerability_timer - delta)
+	if _attack_stage >= 0:
+		_update_attack(delta)
 	if Input.is_action_just_pressed("pause"):
 		get_tree().paused = not get_tree().paused
 	if get_tree().paused:
@@ -65,9 +78,17 @@ func _physics_process(delta: float) -> void:
 		move_direction = move_direction.normalized()
 		_facing = move_direction
 	if Input.is_action_just_pressed("dodge") and _dodge_cooldown_timer <= 0.0:
-		_begin_dodge(move_direction)
-	if Input.is_action_just_pressed("attack") and not _attack_locked:
-		_begin_attack()
+		if _attack_stage < 0 or _attack_elapsed >= _attack_data[_attack_stage].dodge_cancel_open:
+			if _attack_stage >= 0:
+				_cancel_attack()
+			_begin_dodge(move_direction)
+	if Input.is_action_just_pressed("attack"):
+		if _attack_stage < 0 and not _attack_locked:
+			_begin_attack()
+		elif _attack_stage >= 0 and _attack_stage < 2:
+			var data := _attack_data[_attack_stage]
+			if _attack_elapsed >= data.combo_buffer_open and _attack_elapsed <= data.total_duration() - data.combo_buffer_close:
+				_combo_buffered = true
 	if _dodge_timer > 0.0:
 		velocity.x = _dodge_direction.x * dodge_speed
 		velocity.z = _dodge_direction.z * dodge_speed
@@ -93,9 +114,70 @@ func _begin_dodge(move_direction: Vector3) -> void:
 
 
 func _begin_attack() -> void:
+	_start_attack(0)
+
+
+func _start_attack(stage: int) -> void:
+	_attack_stage = stage
+	_attack_elapsed = 0.0
+	_attack_hit_targets.clear()
+	_combo_buffered = false
+	_attack_direction = _facing.normalized()
 	_attack_locked = true
 	attack_requested.emit()
-	_play_action("attack", 10.0)
+	var data := _attack_data[stage]
+	if _feedback != null:
+		_feedback.play_swing(global_position + Vector3.UP * 0.05, _attack_direction, data.reach)
+	_play_action("attack", 4.0 / data.total_duration())
+
+
+func _update_attack(delta: float) -> void:
+	var data := _attack_data[_attack_stage]
+	var previous := _attack_elapsed
+	_attack_elapsed += delta
+	if previous < data.windup and _attack_elapsed >= data.windup:
+		_query_attack_hits(data)
+	elif previous >= data.windup and previous < data.windup + data.active_duration:
+		_query_attack_hits(data)
+	if _attack_elapsed >= data.total_duration():
+		var continue_combo := _combo_buffered and _attack_stage < 2
+		var next_stage := _attack_stage + 1
+		_attack_stage = -1
+		_attack_locked = false
+		if continue_combo:
+			_start_attack(next_stage)
+		else:
+			_update_animation(Vector3.ZERO)
+
+
+func _query_attack_hits(data: AttackData) -> void:
+	var query := SphereShape3D.new()
+	query.radius = data.hit_radius
+	var query_params := PhysicsShapeQueryParameters3D.new()
+	query_params.shape = query
+	query_params.transform = Transform3D(Basis.IDENTITY, global_position + Vector3.UP * 0.55 + _attack_direction * data.reach)
+	query_params.collision_mask = 2
+	query_params.collide_with_areas = true
+	query_params.collide_with_bodies = true
+	var state := get_world_3d().direct_space_state
+	for result in state.intersect_shape(query_params, 16):
+		var target := result.get("collider") as Node
+		if target == null or _attack_hit_targets.has(target.get_instance_id()):
+			continue
+		if target.has_method("receive_hit"):
+			_attack_hit_targets[target.get_instance_id()] = true
+			var direction := Vector3(_attack_direction.x, 0.0, _attack_direction.z).normalized()
+			var hit_at: Vector3 = (target as Node3D).global_position + Vector3.UP * 0.55
+			target.call("receive_hit", data.damage, direction * data.knockback, hit_at)
+			if _feedback != null:
+				_feedback.register_hit(target as Node3D, data.damage, hit_at, direction, _attack_stage == 2)
+
+
+func _cancel_attack() -> void:
+	_attack_stage = -1
+	_attack_elapsed = 0.0
+	_combo_buffered = false
+	_attack_locked = false
 
 
 func apply_hit(_damage: float, knockback: Vector3 = Vector3.ZERO) -> void:
@@ -228,7 +310,7 @@ func _update_animation(move_direction: Vector3) -> void:
 
 
 func _on_animation_finished() -> void:
-	if sprite.animation in ["attack", "dodge", "hurt"]:
+	if sprite.animation in ["dodge", "hurt"]:
 		_attack_locked = false
 		_update_animation(Vector3.ZERO)
 
