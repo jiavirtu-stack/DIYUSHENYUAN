@@ -2,6 +2,7 @@ extends CharacterBody3D
 class_name FairytalePlayer
 
 signal attack_requested
+signal health_changed(current: float, maximum: float)
 
 const WALK_ATLAS_PATH := "res://assets/player/pilgrim_walk_atlas.png"
 const IDLE_STRIP_PATH := "res://assets/player/pilgrim_idle_strip.png"
@@ -14,6 +15,7 @@ const ATTACK_DATA_PATHS := ["res://resources/attacks/light_1.tres", "res://resou
 @export_range(0.2, 2.0, 0.01) var dodge_cooldown := 1.05
 @export_range(0.0, 0.4, 0.01) var dodge_invulnerability := 0.22
 @export_range(5.0, 14.0, 0.1) var dodge_speed := 9.2
+@export var max_health := 100.0
 
 @onready var sprite: AnimatedSprite3D = $Visual/Sprite
 @onready var contact_shadow: MeshInstance3D = $ContactShadow
@@ -26,6 +28,7 @@ var _dodge_cooldown_timer := 0.0
 var _invulnerability_timer := 0.0
 var _attack_locked := false
 var _dead := false
+var health := 100.0
 var _arena: Node
 var _attack_data: Array[AttackData] = []
 var _attack_stage := -1
@@ -42,6 +45,14 @@ var is_invulnerable: bool:
 
 func _ready() -> void:
 	add_to_group("player")
+	var run_state := get_node_or_null("/root/RunState")
+	var selected_buff: int = run_state.selected_buff if run_state != null else -1
+	health = max_health
+	if selected_buff == 2:
+		max_health += 25.0
+		health = max_health
+	elif selected_buff == 1:
+		dodge_cooldown *= 0.8
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 	_setup_contact_shadow()
@@ -55,7 +66,10 @@ func _ready() -> void:
 	_arena = get_parent()
 	_feedback = get_node_or_null("CombatFeedback") as CombatFeedback
 	for path in ATTACK_DATA_PATHS:
-		_attack_data.append(load(path) as AttackData)
+		var attack := (load(path) as AttackData).duplicate(true) as AttackData
+		if selected_buff == 0:
+			attack.damage *= 1.2
+		_attack_data.append(attack)
 	_play_directional("idle", _facing)
 	_update_camera_target()
 
@@ -181,12 +195,17 @@ func _cancel_attack() -> void:
 	_attack_locked = false
 
 
-func apply_hit(_damage: float, knockback: Vector3 = Vector3.ZERO) -> void:
+func apply_hit(damage: float, knockback: Vector3 = Vector3.ZERO) -> void:
 	if is_invulnerable or _dead:
 		return
+	health = maxf(0.0, health - damage)
+	health_changed.emit(health, max_health)
 	velocity += knockback
 	_invulnerability_timer = 0.38
 	_attack_locked = true
+	if health <= 0.0:
+		die()
+		return
 	_play_action("hurt", 9.0)
 
 

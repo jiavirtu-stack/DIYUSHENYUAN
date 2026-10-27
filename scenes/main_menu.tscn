@@ -52,6 +52,24 @@ offset_bottom = 585.0
 theme_override_font_sizes/font_size = 26
 text = "进入仪式场"
 
+[node name="SettingsButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 840.0
+offset_top = 600.0
+offset_right = 1080.0
+offset_bottom = 650.0
+theme_override_font_sizes/font_size = 21
+text = "声音设置"
+
+[node name="ExitButton" type="Button" parent="."]
+layout_mode = 0
+offset_left = 840.0
+offset_top = 665.0
+offset_right = 1080.0
+offset_bottom = 715.0
+theme_override_font_sizes/font_size = 21
+text = "退出"
+
 [node name="Hint" type="Label" parent="."]
 layout_mode = 0
 offset_left = 640.0

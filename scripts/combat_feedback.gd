@@ -40,6 +40,7 @@ func _spawn_sound(stream: AudioStream, at: Vector3, volume_db: float) -> void:
 	player.stream = stream
 	player.volume_db = volume_db
 	player.max_distance = 24.0
+	player.bus = "SFX"
 	player.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
 	player.position = at
 	add_child(player)
