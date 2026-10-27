@@ -20,4 +20,12 @@ docs/player_check*
 # Superseded hand-authored procedural texture drafts.
 assets/arena/arena_stone_tile.png
 assets/arena/arena_ritual_decal.png
-\ndocs/stage3_preview*\n\ndocs/stage4_preview*\n\ndocs/stage5_preview*\n\ndocs/stage7_preview*\n
+docs/stage3_preview*
+docs/stage4_preview*
+docs/stage5_preview*
+docs/stage7_preview*
+docs/boss_v2_preview*
+docs/boss_motion_preview*
+docs/boss_motion2_preview*
+docs/boss_final_preview*
+docs/boss_motion10_preview*

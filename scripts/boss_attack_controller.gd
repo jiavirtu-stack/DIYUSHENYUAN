@@ -58,6 +58,7 @@ func _run_skill(index: int, phase: int, target_position: Vector3) -> void:
 	if _busy:
 		return
 	_busy = true
+	boss.pending_skill = index
 	match index:
 		0: await _ground_spikes(target_position, phase)
 		1: await _fan_blast(target_position, phase)

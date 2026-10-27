@@ -1,3 +1,10 @@
-# Boss 资产来源
+# Boss 资产与动作映射
 
-`ritual_briar_atlas.png` 是本项目原创手绘式程序绘制精灵图集，由 `scripts/generate_boss_atlas.py` 使用 Pillow 绘制、渐层叠色与透明通道合成；未采样或引用参考视频中的怪物造型。图集为 4×3 格、每格 512×512 RGBA：第一行待机呼吸，第二行蓄力预警，第三行受击/消散。可运行 `python scripts/generate_boss_atlas.py` 重新生成。
+运行时 Boss 使用以下本项目生成的透明 RGBA PNG：
+
+- `ritual_briar_atlas_v2.png`（1448×1086，4×3，每格 362×362）：第一行待机呼吸/枝蔓轻摆；第二行抬起并张开枝蔓蓄力；第三行受击回缩和最后的伏倒。
+- `ritual_briar_actions.png`（1774×887，4×2，约每格 443×443）：第一行横向根蔓扫击，从蓄势、伸展、扫到回收；第二行举根、下砸、冲击、收势。游戏对两个动作序列分别命名为 `attack_sweep`、`attack_slam`；环形弹幕使用 `attack_barrage` 播放下砸/核心爆发序列。
+
+图像由 Codex 内置 imagegen 生成。输入包括本地参考视频联系表和第一张原创 Boss 图集：联系表只作为动作幅度、Boss 与玩家比例、亮暗节奏的观察参考；原创图集只保持同一新 Boss 角色连续性。图像没有复制原作角色的具体轮廓、纹样或服饰。提示词要求原创沼泽根系兽、破裂浅色树皮面具、垂直熔光核心、非对称根蔓和钟形荚果发光点，并分别生成横扫/下砸 4 帧序列。
+
+文件生成后经检查为 RGBA，已复制到项目目录；运行时在 `scripts/boss.gd` 按 4×3 与 4×2 网格切帧。旧版 `ritual_briar_atlas.png` 由仓库内 `scripts/generate_boss_atlas.py` 程序绘制，作为早期原型保留，当前运行场景不再引用它。

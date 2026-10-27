@@ -2,8 +2,8 @@
 
 [ext_resource type="Script" path="res://scripts/boss.gd" id="1"]
 [sub_resource type="CapsuleShape3D" id="Capsule_boss"]
-radius = 0.72
-height = 2.8
+radius = 1.18
+height = 4.1
 [sub_resource type="SphereMesh" id="Mesh_boss_shadow"]
 radius = 0.9
 height = 0.07
@@ -27,6 +27,7 @@ mesh = SubResource("Mesh_boss_shadow")
 [node name="BossSprite" type="AnimatedSprite3D" parent="Visual"]
 position = Vector3(0, 0.01, 0)
 centered = false
-pixel_size = 0.0062
-offset = Vector2(-256, 0)
+pixel_size = 0.0115
+offset = Vector2(-181, 0)
+scale = Vector3(2.1, 1.7, 1)
 cast_shadow = 0
