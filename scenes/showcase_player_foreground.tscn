@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/arena.tscn" id="1"]
+[ext_resource type="Script" path="res://scripts/player_depth_showcase.gd" id="2"]
+
+[node name="PlayerForegroundShowcase" type="Node3D"]
+script = ExtResource("2")
+player_world_z = 6.0
+
+[node name="Arena" parent="." instance=ExtResource("1")]

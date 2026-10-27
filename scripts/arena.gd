@@ -10,6 +10,7 @@ class_name ArenaStage
 @export var target_offset := Vector3(0.0, 0.0, 0.0)
 @export var camera_follow_speed: float = 4.0
 @export var camera_push_amount: float = 0.025
+@export_range(0.0, 0.75, 0.01) var camera_follow_influence: float = 0.28
 
 @export_group("Arena")
 @export var arena_width: float = 18.0
@@ -24,6 +25,8 @@ const GATE_Z := -6.15
 var _camera: Camera3D
 var _camera_home := Vector3(0.0, 0.0, 0.0)
 var _camera_target := Vector3(0.0, 1.8, FLOOR_CENTER_Z)
+var _camera_origin_home := Vector3(0.0, 0.0, 0.0)
+var _camera_origin_target := Vector3(0.0, 1.8, FLOOR_CENTER_Z)
 var _elapsed := 0.0
 var _stone_material: StandardMaterial3D
 var _floor_material: ShaderMaterial
@@ -54,9 +57,10 @@ func _process(delta: float) -> void:
 
 
 func set_camera_target(world_position: Vector3) -> void:
-	## Called by the player controller in the next stage. The player has not yet been added.
-	_camera_home = world_position + target_offset + Vector3(0.0, 10.4, 14.0)
-	_camera_target = world_position + target_offset + Vector3(0.0, 1.8, 0.0)
+	## Called by the player controller to keep the camera close to the active combat space.
+	var follow_delta := Vector3(world_position.x, 0.0, world_position.z - FLOOR_CENTER_Z) * camera_follow_influence
+	_camera_home = _camera_origin_home + follow_delta
+	_camera_target = _camera_origin_target + follow_delta
 
 
 func clamp_to_arena(world_position: Vector3, margin: float = 0.55) -> Vector3:
@@ -357,6 +361,8 @@ func _create_camera() -> void:
 	var distance := 17.0
 	_camera.position = look_target + Vector3(0, sin(deg_to_rad(camera_pitch)) * distance, cos(deg_to_rad(camera_pitch)) * distance)
 	_camera_home = _camera.position
+	_camera_origin_home = _camera_home
+	_camera_origin_target = look_target
 	_camera.current = true
 	add_child(_camera)
 	_camera.look_at(look_target, Vector3.UP)

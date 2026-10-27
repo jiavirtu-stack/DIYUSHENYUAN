@@ -14,6 +14,8 @@ desktop.ini
 docs/*preview*
 docs/arena_final*
 docs/stage1_check*
+docs/depth_*
+docs/player_check*
 
 # Superseded hand-authored procedural texture drafts.
 assets/arena/arena_stone_tile.png
