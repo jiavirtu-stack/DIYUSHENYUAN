@@ -33,6 +33,17 @@ func register_hit(target: Node3D, damage: float, at: Vector3, direction: Vector3
 	_trigger_hit_stop(0.075 if heavy else 0.048)
 
 
+func register_ability_hit(target: Node3D, damage: float, at: Vector3, _direction: Vector3) -> void:
+	## Ability hit feedback without the melee sweep arc.
+	_spawn_hit_particles(at, true)
+	_spawn_sound(_heavy_stream, at, -9.0)
+	_spawn_damage_number(damage, at)
+	var arena := get_parent()
+	if arena.has_method("set_camera_shake"):
+		arena.call("set_camera_shake", 0.09)
+	_trigger_hit_stop(0.055)
+
+
 func _spawn_sound(stream: AudioStream, at: Vector3, volume_db: float) -> void:
 	if stream == null:
 		return

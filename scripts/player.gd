@@ -16,6 +16,8 @@ const ATTACK_DATA_PATHS := ["res://resources/attacks/light_1.tres", "res://resou
 @export_range(0.0, 0.4, 0.01) var dodge_invulnerability := 0.22
 @export_range(5.0, 14.0, 0.1) var dodge_speed := 9.2
 @export var max_health := 100.0
+@export_range(1.0, 100.0, 1.0) var beam_damage := 34.0
+@export_range(4.0, 24.0, 0.5) var beam_range := 18.0
 
 @onready var sprite: AnimatedSprite3D = $Visual/Sprite
 @onready var contact_shadow: MeshInstance3D = $ContactShadow
@@ -37,6 +39,9 @@ var _attack_hit_targets: Dictionary = {}
 var _combo_buffered := false
 var _attack_direction := Vector3(0.0, 0.0, 1.0)
 var _feedback: CombatFeedback
+var _selected_card_index := 0
+var _beam_charging := false
+var _beam_preview: Node3D
 
 var is_invulnerable: bool:
 	get:
@@ -53,6 +58,9 @@ func _ready() -> void:
 		health = max_health
 	elif selected_buff == 1:
 		dodge_cooldown *= 0.8
+	if run_state != null and run_state.carried_health > 0.0:
+		health = minf(run_state.carried_health, max_health)
+		run_state.carried_health = -1.0
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 	_setup_contact_shadow()
@@ -65,6 +73,8 @@ func _ready() -> void:
 	sprite.animation_finished.connect(_on_animation_finished)
 	_arena = get_parent()
 	_feedback = get_node_or_null("CombatFeedback") as CombatFeedback
+	if _feedback == null:
+		_feedback = get_parent().get_node_or_null("CombatFeedback") as CombatFeedback
 	for path in ATTACK_DATA_PATHS:
 		var attack := (load(path) as AttackData).duplicate(true) as AttackData
 		if selected_buff == 0:
@@ -118,6 +128,143 @@ func _physics_process(delta: float) -> void:
 		global_position = _arena.call("clamp_to_arena", global_position, 0.58)
 	_update_animation(move_direction)
 	_update_camera_target()
+
+
+func _process(_delta: float) -> void:
+	if not _beam_charging or get_tree().paused:
+		return
+	var aim_direction := _get_mouse_aim_direction()
+	if aim_direction.length_squared() > 0.001:
+		_facing = aim_direction
+		if not _attack_locked:
+			_play_directional("idle", _facing)
+	if is_instance_valid(_beam_preview):
+		_update_beam_visual(_beam_preview, global_position + Vector3.UP * 0.78 + aim_direction * 0.48, aim_direction, beam_range)
+
+
+func set_selected_card(index: int) -> void:
+	_selected_card_index = clampi(index, 0, 4)
+
+
+func begin_beam_charge() -> void:
+	if _dead or _selected_card_index != 0 or get_tree().paused or _beam_charging:
+		return
+	_beam_charging = true
+	_beam_preview = _create_beam_visual(Color(0.31, 0.79, 1.0, 0.34), Color(0.84, 0.96, 1.0, 0.55))
+	_update_beam_visual(_beam_preview, global_position + Vector3.UP * 0.78, _get_mouse_aim_direction(), beam_range)
+
+
+func release_beam() -> void:
+	if not _beam_charging:
+		return
+	_beam_charging = false
+	if is_instance_valid(_beam_preview):
+		_beam_preview.queue_free()
+	_beam_preview = null
+	if _dead or get_tree().paused:
+		return
+	_fire_beam()
+
+
+func cancel_beam_charge() -> void:
+	_beam_charging = false
+	if is_instance_valid(_beam_preview):
+		_beam_preview.queue_free()
+	_beam_preview = null
+
+
+func _fire_beam() -> void:
+	var direction := _get_mouse_aim_direction()
+	if direction.length_squared() < 0.001:
+		return
+	_facing = direction
+	var start := global_position + Vector3.UP * 0.78 + direction * 0.48
+	var end := start + direction * beam_range
+	var query := PhysicsRayQueryParameters3D.create(start, end, 2)
+	query.exclude = [get_rid()]
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var beam_length := beam_range
+	if not hit.is_empty():
+		var hit_position: Vector3 = hit.get("position", end)
+		beam_length = maxf(0.65, start.distance_to(hit_position))
+		var target := hit.get("collider") as Node
+		if target != null and target.has_method("receive_hit"):
+			target.call("receive_hit", beam_damage, direction * 2.5, hit_position)
+			if _feedback != null:
+				_feedback.register_ability_hit(target as Node3D, beam_damage, hit_position, direction)
+	var visual := _create_beam_visual(Color(0.29, 0.76, 1.0, 0.9), Color(0.95, 0.99, 1.0, 1.0))
+	_update_beam_visual(visual, start, direction, beam_length)
+	var outer := visual.get_node("Outer") as MeshInstance3D
+	var core := visual.get_node("Core") as MeshInstance3D
+	var outer_material := outer.material_override as StandardMaterial3D
+	var core_material := core.material_override as StandardMaterial3D
+	var tween := create_tween()
+	tween.tween_method(_fade_beam.bind(outer_material, core_material), 1.0, 0.0, 0.26)
+	tween.tween_callback(visual.queue_free)
+
+
+func _get_mouse_aim_direction() -> Vector3:
+	var camera := get_viewport().get_camera_3d()
+	if camera == null:
+		return _facing
+	var mouse_position := get_viewport().get_mouse_position()
+	var ray_origin := camera.project_ray_origin(mouse_position)
+	var ray_direction := camera.project_ray_normal(mouse_position)
+	var ground_point: Variant = Plane(Vector3.UP, 0.0).intersects_ray(ray_origin, ray_direction)
+	if ground_point == null:
+		var flattened := Vector3(ray_direction.x, 0.0, ray_direction.z)
+		return flattened.normalized() if flattened.length_squared() > 0.001 else _facing
+	var direction := Vector3(ground_point.x - global_position.x, 0.0, ground_point.z - global_position.z)
+	return direction.normalized() if direction.length_squared() > 0.001 else _facing
+
+
+func _create_beam_visual(outer_color: Color, core_color: Color) -> Node3D:
+	var beam := Node3D.new()
+	beam.name = "LightWave"
+	beam.set_meta("persistent", true)
+	get_parent().add_child(beam)
+	for part in [["Outer", outer_color, 0.34], ["Core", core_color, 0.12]]:
+		var segment := MeshInstance3D.new()
+		segment.name = part[0]
+		var box := BoxMesh.new()
+		box.size = Vector3.ONE
+		segment.mesh = box
+		var material := StandardMaterial3D.new()
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		material.albedo_color = part[1]
+		material.emission_enabled = true
+		material.emission = Color(part[1].r, part[1].g, part[1].b)
+		material.emission_energy_multiplier = 2.6 if part[0] == "Core" else 1.8
+		material.no_depth_test = false
+		segment.material_override = material
+		segment.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		beam.add_child(segment)
+	return beam
+
+
+func _update_beam_visual(beam: Node3D, start: Vector3, direction: Vector3, length: float) -> void:
+	if not is_instance_valid(beam):
+		return
+	var safe_direction := Vector3(direction.x, 0.0, direction.z).normalized()
+	if safe_direction.length_squared() < 0.001:
+		safe_direction = _facing
+	var center := start + safe_direction * (length * 0.5)
+	for segment_name in ["Outer", "Core"]:
+		var segment := beam.get_node(segment_name) as MeshInstance3D
+		segment.global_position = center
+		segment.look_at(center + safe_direction, Vector3.UP)
+		var width := 0.34 if segment_name == "Outer" else 0.12
+		segment.scale = Vector3(width, width, length)
+
+
+func _fade_beam(alpha: float, outer: StandardMaterial3D, core: StandardMaterial3D) -> void:
+	var outer_color := outer.albedo_color
+	outer_color.a = 0.9 * alpha
+	outer.albedo_color = outer_color
+	var core_color := core.albedo_color
+	core_color.a = alpha
+	core.albedo_color = core_color
 
 
 func _begin_dodge(move_direction: Vector3) -> void:

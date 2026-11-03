@@ -42,4 +42,8 @@ func _show_settings() -> void:
 
 
 func _on_start_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/arena.tscn")
+	var run_state := get_node_or_null("/root/RunState")
+	if run_state != null:
+		run_state.carried_health = -1.0
+		run_state.cleared_rooms = 0
+	get_tree().change_scene_to_file("res://scenes/infantry_room.tscn")
