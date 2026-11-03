@@ -65,7 +65,15 @@ func _process(delta: float) -> void:
 
 
 func set_camera_target(world_position: Vector3) -> void:
-	_camera_target = Vector3(world_position.x, 1.45, world_position.z)
+	# Keep the player inside the camera's safe frame near room edges by
+	# shifting the view target back toward the room center (opposite camera motion).
+	var half_view_width := camera_ortho_size * 0.88
+	var half_view_depth := camera_ortho_size * 0.42
+	var camera_x := clampf(world_position.x, -HALF_WIDTH + half_view_width, HALF_WIDTH - half_view_width)
+	var camera_z := clampf(world_position.z, -HALF_DEPTH + half_view_depth, HALF_DEPTH - half_view_depth)
+	if _door_open and _room_number < 3 and world_position.z < -12.8:
+		camera_z = world_position.z
+	_camera_target = Vector3(camera_x, 1.45, camera_z)
 	var distance := 24.0
 	var pitch := deg_to_rad(camera_pitch)
 	_camera_home = _camera_target + Vector3(0.0, sin(pitch) * distance, cos(pitch) * distance)
