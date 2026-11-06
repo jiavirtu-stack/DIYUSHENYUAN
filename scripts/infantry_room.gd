@@ -67,10 +67,11 @@ func _process(delta: float) -> void:
 func set_camera_target(world_position: Vector3) -> void:
 	# Keep the player inside the camera's safe frame near room edges by
 	# shifting the view target back toward the room center (opposite camera motion).
-	var half_view_width := camera_ortho_size * 0.88
-	var half_view_depth := camera_ortho_size * 0.42
-	var camera_x := clampf(world_position.x, -HALF_WIDTH + half_view_width, HALF_WIDTH - half_view_width)
-	var camera_z := clampf(world_position.z, -HALF_DEPTH + half_view_depth, HALF_DEPTH - half_view_depth)
+	# camera_ortho_size is the vertical span; multiplying it by a fixed
+	# horizontal factor made the clamp bounds cross on wide windows, causing
+	# the target to jump sides as the player crossed the room center.
+	var camera_x := clampf(world_position.x, -HALF_WIDTH + 4.0, HALF_WIDTH - 4.0)
+	var camera_z := clampf(world_position.z, -HALF_DEPTH + 4.0, HALF_DEPTH - 4.0)
 	if _door_open and _room_number < 3 and world_position.z < -12.8:
 		camera_z = world_position.z
 	_camera_target = Vector3(camera_x, 1.45, camera_z)
