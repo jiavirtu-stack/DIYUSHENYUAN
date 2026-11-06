@@ -12,6 +12,7 @@ const BOSS_SCENE := "res://scenes/arena.tscn"
 @export_range(15.0, 35.0, 0.5) var camera_ortho_size := 22.0
 @export_range(10.0, 45.0, 0.5) var camera_pitch := 24.0
 @export var camera_follow_speed := 4.2
+@export_range(0.0, 5.0, 0.1) var camera_edge_look_ahead := 2.4
 
 const HALF_WIDTH := 18.0
 const HALF_DEPTH := 15.0
@@ -65,13 +66,14 @@ func _process(delta: float) -> void:
 
 
 func set_camera_target(world_position: Vector3) -> void:
-	# Keep the player inside the camera's safe frame near room edges by
-	# shifting the view target back toward the room center (opposite camera motion).
-	# camera_ortho_size is the vertical span; multiplying it by a fixed
-	# horizontal factor made the clamp bounds cross on wide windows, causing
-	# the target to jump sides as the player crossed the room center.
-	var camera_x := clampf(world_position.x, -HALF_WIDTH + 4.0, HALF_WIDTH - 4.0)
-	var camera_z := clampf(world_position.z, -HALF_DEPTH + 4.0, HALF_DEPTH - 4.0)
+	# Near an edge, shift the view target toward the room interior so the player
+	# stays comfortably framed and the camera does not reveal the void beyond walls.
+	var edge_x := clampf(world_position.x / HALF_WIDTH, -1.0, 1.0)
+	var edge_z := clampf(world_position.z / HALF_DEPTH, -1.0, 1.0)
+	var camera_x := world_position.x - edge_x * camera_edge_look_ahead
+	var camera_z := world_position.z - edge_z * camera_edge_look_ahead
+	camera_x = clampf(camera_x, -HALF_WIDTH + 2.0, HALF_WIDTH - 2.0)
+	camera_z = clampf(camera_z, -HALF_DEPTH + 2.0, HALF_DEPTH - 2.0)
 	if _door_open and _room_number < 3 and world_position.z < -12.8:
 		camera_z = world_position.z
 	_camera_target = Vector3(camera_x, 1.45, camera_z)
