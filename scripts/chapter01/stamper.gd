@@ -18,12 +18,13 @@ var _head: Node3D
 var _warning: MeshInstance3D
 var _core: MeshInstance3D
 var _shells: Array[Node3D] = []
+var _art_sprite: Sprite3D
 
 func _ready() -> void:
 	collision_layer = 2
 	var collision := CollisionShape3D.new()
 	var shape := BoxShape3D.new()
-	shape.size = Vector3(3.2, 4.0, 2.2)
+	shape.size = Vector3(5.5, 4.0, 2.2)
 	collision.shape = shape
 	collision.position.y = 2.0
 	add_child(collision)
@@ -45,10 +46,11 @@ func _physics_process(delta: float) -> void:
 		_state = "recovery"
 		status = "纸芯暴露 · 攻击印章柄 / 白色纸芯"
 		_clock = 2.4 if phase == 1 else 1.8
-		_visual.position.y = -0.35
+		_art_sprite.scale = Vector3(1.04, 0.95, 1.0)
 	elif _state == "recovery":
 		exposed = false
 		_visual.position.y = 0.0
+		_art_sprite.scale = Vector3.ONE
 		_state = "idle"
 		room.call("send_paper_wall", _step)
 		status = "纸墙推进 · 攻击纸墙可撕开通路"
@@ -61,6 +63,7 @@ func _physics_process(delta: float) -> void:
 		_clock = 1.05 if phase == 1 else 0.8
 		_warning = room.call("warning_rect", _impact, Vector2(4.0, 4.0), _clock) as MeshInstance3D
 		_state = "warning"
+		_art_sprite.scale = Vector3(0.98, 1.04, 1.0)
 		status = "矩形落印预警 · 离开红框"
 		_step += 1
 
@@ -74,6 +77,7 @@ func receive_hit(damage: float, _knockback: Vector3, _at: Vector3) -> void:
 		for shell in _shells:
 			shell.visible = false
 		_core.scale = Vector3(1.5, 1.0, 1.5)
+		_art_sprite.frame = 1
 		phase_changed.emit(phase)
 	if health <= 0.0:
 		dead = true
@@ -127,6 +131,18 @@ func _build_visual() -> void:
 		label.modulate = Color(0.95, 0.75, 0.65)
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		_visual.add_child(label)
+	for child in _visual.get_children():
+		(child as Node3D).visible = false
+	_art_sprite = Sprite3D.new()
+	_art_sprite.name = "StamperArt"
+	_art_sprite.texture = load("res://assets/chapter01/stamper_forms.png")
+	_art_sprite.hframes = 2
+	_art_sprite.centered = false
+	_art_sprite.offset = Vector2(-_art_sprite.texture.get_width() * 0.25, 0)
+	_art_sprite.pixel_size = 9.0 / _art_sprite.texture.get_height()
+	_art_sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_art_sprite.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_visual.add_child(_art_sprite)
 
 func _box(size: Vector3, at: Vector3, color: Color, parent: Node3D) -> MeshInstance3D:
 	var node := MeshInstance3D.new()

@@ -1,5 +1,16 @@
 extends "res://scripts/corrupted_villager.gd"
 
+var _nav_timer := 0.0
+var _path_direction := Vector3.ZERO
+
+func _get_move_direction(direction: Vector3) -> Vector3:
+	_nav_timer -= get_physics_process_delta_time()
+	if _nav_timer <= 0.0 and is_instance_valid(_target):
+		_nav_timer = 0.18
+		var room := get_parent().get_parent()
+		_path_direction = room.get("_art").call("path_direction", global_position, _target.global_position)
+	return _path_direction if _path_direction.length_squared() > 0.01 else direction
+
 func _build_visual() -> void:
 	_visual_root = Node3D.new()
 	add_child(_visual_root)

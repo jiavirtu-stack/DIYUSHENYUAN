@@ -21,10 +21,20 @@ func _ready() -> void:
 	box.size = extent
 	mesh.mesh = box
 	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(0.78, 0.72, 0.61)
+	material.albedo_color = Color(0.32, 0.37, 0.40)
 	material.roughness = 1.0
 	mesh.material_override = material
 	add_child(mesh)
+	for i in range(4):
+		var line := MeshInstance3D.new()
+		var line_mesh := BoxMesh.new()
+		line_mesh.size = Vector3(extent.x * 0.72, 0.025, 0.025)
+		line.mesh = line_mesh
+		var ink := StandardMaterial3D.new()
+		ink.albedo_color = Color(0.12, 0.16, 0.20)
+		line.material_override = ink
+		line.position = Vector3(0, -extent.y * 0.25 + i * extent.y * 0.16, extent.z * 0.5 + 0.02)
+		add_child(line)
 
 func _physics_process(delta: float) -> void:
 	if not moving:

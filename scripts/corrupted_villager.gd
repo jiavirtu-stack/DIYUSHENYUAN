@@ -60,9 +60,12 @@ func _physics_process(delta: float) -> void:
 		_attack_cooldown = 1.65
 		_telegraph.visible = true
 	else:
-		var move_direction := direction if distance > attack_range * 0.82 else Vector3.ZERO
+		var move_direction := _get_move_direction(direction) if distance > attack_range * 0.82 else Vector3.ZERO
 		velocity = move_direction * move_speed + _knockback_velocity
 	move_and_slide()
+
+func _get_move_direction(direction: Vector3) -> Vector3:
+	return direction
 
 
 func receive_hit(damage: float, knockback: Vector3, _hit_position: Vector3) -> void:

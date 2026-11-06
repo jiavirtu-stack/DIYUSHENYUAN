@@ -36,7 +36,7 @@ func _run() -> void:
 		if child.get_script() == load("res://scripts/chapter01/paper_body.gd"):
 			papers.append(child)
 	assert(papers.size() == 5)
-	chapter.player.position = Vector3(0, 0, 1.8)
+	chapter.player.position = Vector3(0, 0, papers[2].position.z + 1.8)
 	chapter.player.set("_attack_direction", Vector3(0, 0, -1))
 	await physics_frame
 	chapter.player.call("_query_attack_hits", chapter.player.get("_attack_data")[0])

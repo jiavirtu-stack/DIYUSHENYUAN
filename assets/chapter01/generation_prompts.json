@@ -1,0 +1,27 @@
+{
+  "mode": "built-in image_gen",
+  "source_directory": "第一关场景/第一关场景",
+  "jobs": [
+    {
+      "key": "office",
+      "file": "场景_被辞退的办公室_冷光风蚀墙体_v4.png",
+      "prompt": "Use case: precise-object-edit. This is a production Godot game background cleanup. Preserve the entire supplied 1536x1024 office artwork, same overhead 2.5D view, furniture and wall coordinates, floor tile scale, cold blue lighting, details and framing. Remove ONLY the hooded character standing beside the central desk and its cast/contact shadow; reconstruct matching uninterrupted tiled floor where it stood. Keep the desk, chair, lamp, box, books, picture, red carpet, evidence board, calendar, glass meeting room, cabinets, all architecture exactly in place. No characters, no new labels, no UI, no gameplay effects. Output the cleaned full landscape background, same 3:2 aspect ratio."
+    },
+    {
+      "key": "street",
+      "file": "场景_雨后街道_冷光风蚀高门_v4.png",
+      "prompt": "Use case: precise-object-edit. Production Godot game background cleanup. Preserve this entire supplied 1536x1024 rainy street artwork exactly: same overhead 2.5D perspective, framing, geometry, shops, tall doorway, street lamps, roads, curbs, zebra crossing, mailbox, bus stop, tree, blue cold lighting. Remove ONLY the hooded running character near the intersection and its shadow; reconstruct matching wet asphalt and crossing stripes. Preserve every road/building layout coordinate. No characters, no UI, no red gameplay warnings, no glitch overlay. Output a clean full landscape 3:2 background."
+    },
+    {
+      "key": "apartment",
+      "file": "场景_出租屋_冷光风蚀墙体_v3.png",
+      "prompt": "Use case: precise-object-edit. Production Godot game background cleanup. Preserve the whole supplied 1536x1024 apartment artwork with same overhead 2.5D perspective, same exact walls, door, furniture, bed, rug, desk and papers, shelves, kitchen and paper piles and cold blue lighting. Remove the hooded character at the bottom doorway, its shadow, and ALL red stamps / red square warning graphics / red striped warning rectangles on the central floor. Reconstruct matching blue gray tiled floor under removed graphics and rug at entrance where character was. Keep central area empty for runtime boss/combat. No boss, no character, no warnings, no new props, no UI, no text. Preserve full 3:2 framing."
+    },
+    {
+      "key": "boss",
+      "file": "角色_盖章者_双阶段设定_v1.png",
+      "transparent": true,
+      "prompt": "Use case: background-extraction. Production game sprite sheet. Extract BOTH boss forms from this supplied image, preserve the monsters' exact visual identities, frontal overhead 2.5D view, inked shaded pixel-art style, black fog and copper wires, red rubber stamp held up over left arm, paper/ledger shells and legs. Remove the entire floor background, ALL detached floor papers and the red warning rectangle. Output a genuinely transparent PNG atlas with TWO equal-width cells in a single horizontal row, one boss centered in each cell, full silhouette with 5% transparent padding, same scale and feet aligned at the same baseline. Left cell = intact armored shell form, right cell = exposed white paper core form. No floor, no contact shadow, no text, no extra figures, no baked checkerboard. Keep interior black fog opaque while actual gaps around/under legs are transparent."
+    }
+  ]
+}

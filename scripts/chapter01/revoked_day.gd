@@ -6,6 +6,7 @@ const FEEDBACK := preload("res://scripts/combat_feedback.gd")
 const ECHO := preload("res://scripts/chapter01/office_echo.gd")
 const PAPER := preload("res://scripts/chapter01/paper_body.gd")
 const STAMPER := preload("res://scripts/chapter01/stamper.gd")
+const PAINTED_MAP := preload("res://scripts/chapter01/painted_map.gd")
 
 const EVIDENCE := [
 	["迟交记录", "[可核对 · 提交系统]\n两次报告晚于约定时间，其中一份存在遗漏。记录说明任务完成遇到了困难；它没有记录一个人的价值。"],
@@ -46,6 +47,8 @@ var _shrink_step := 0
 var _arena_limit := Vector2(14, 12)
 var _danger_edges: Array[MeshInstance3D] = []
 var _changing := false
+var _art: Node3D
+var _last_player_position := Vector3.ZERO
 
 func _ready() -> void:
 	var state := get_node_or_null("/root/RunState")
@@ -81,6 +84,7 @@ func _ready() -> void:
 	player.external_pause_control = true
 	add_child(player)
 	player.process_mode = Node.PROCESS_MODE_PAUSABLE
+	player.get_node("Visual").scale = Vector3.ONE * 1.25
 	hud = CanvasLayer.new()
 	hud.name = "ChapterHUD"
 	hud.set_script(HUD)
@@ -100,13 +104,14 @@ func _load_stage(next: int) -> void:
 	world = Node3D.new()
 	world.name = ["Office", "RainStreet", "Apartment"][stage]
 	add_child(world)
-	_half = Vector2(22, 18) if stage < 2 else Vector2(16, 14)
+	_half = Vector2(24, 19.532)
 	_build_floor()
 	match stage:
 		0: _build_office()
 		1: _build_street()
 		2: _build_apartment()
-	player.position = Vector3(-13, 0, 10) if stage == 0 else Vector3(0, 0, 10)
+	player.position = _at([Vector2(625, 525), Vector2(750, 710), Vector2(770, 770)][stage])
+	_last_player_position = player.position
 	player.velocity = Vector3.ZERO
 	player.cancel_beam_charge()
 	set_camera_target(player.position)
@@ -118,6 +123,8 @@ func _physics_process(delta: float) -> void:
 	if _changing or won or player.health <= 0.0:
 		return
 	_elapsed += delta
+	var disturbance := records.size() / 6.0 * 0.55 if stage == 0 else (0.4 if stage == 1 else bills_done.size() / 5.0 * 0.65)
+	_art.material.set_shader_parameter("disturbance", disturbance)
 	for node in _subjective:
 		if is_instance_valid(node):
 			var origin: Vector3 = node.get_meta("origin", node.position)
@@ -127,7 +134,7 @@ func _physics_process(delta: float) -> void:
 		if _time_to_shrink <= 0.0 and _shrink_step < 4:
 			_time_to_shrink = 6.0
 			_shrink_step += 1
-			_arena_limit = Vector2(14 - _shrink_step * 1.5, 12 - _shrink_step * 1.4)
+			_arena_limit = Vector2(17 - _shrink_step * 1.5, 9 - _shrink_step)
 			_draw_danger_edges()
 		if absf(player.position.x) > _arena_limit.x or absf(player.position.z) > _arena_limit.y:
 			player.apply_hit(4.0)
@@ -152,7 +159,14 @@ func set_camera_target(at: Vector3) -> void:
 	_wanted_focus = Vector3(clampf(at.x, -range_x, range_x), 0, clampf(at.z, -range_z, range_z))
 
 func clamp_to_arena(at: Vector3, margin: float = 0.6) -> Vector3:
-	return Vector3(clampf(at.x, -_half.x + margin, _half.x - margin), 0, clampf(at.z, -_half.y + margin, _half.y - margin))
+	var bounded := Vector3(clampf(at.x, -_half.x + margin, _half.x - margin), 0, clampf(at.z, -_half.y + margin, _half.y - margin))
+	if is_instance_valid(_art):
+		bounded = _art.call("clamp_player", bounded, _last_player_position)
+	_last_player_position = bounded
+	return bounded
+
+func _at(pixel: Vector2) -> Vector3:
+	return _art.call("to_world", pixel)
 
 func set_camera_shake(_strength: float) -> void:
 	# This chapter keeps the camera stable; impacts use particles and floor stamps.
@@ -213,39 +227,19 @@ func notebook_text() -> String:
 	return result
 
 func _build_floor() -> void:
-	# Exterior architecture continues beyond the playable boundary, including ultrawide windows.
-	_box("Exterior", Vector3(160, 0.2, 160), Vector3(0, -0.28, 0), Color(0.10, 0.14, 0.16))
-	var color := Color(0.29, 0.34, 0.35) if stage == 0 else (Color(0.13, 0.21, 0.25) if stage == 1 else Color(0.32, 0.28, 0.25))
-	_box("Floor", Vector3(_half.x * 2, 0.12, _half.y * 2), Vector3(0, -0.12, 0), color)
-	for x in range(-int(_half.x), int(_half.x) + 1, 2):
-		_box("GridX", Vector3(0.025, 0.015, _half.y * 2), Vector3(x, -0.045, 0), color * 0.64)
-	for z in range(-int(_half.y), int(_half.y) + 1, 2):
-		_box("GridZ", Vector3(_half.x * 2, 0.015, 0.025), Vector3(0, -0.045, z), color * 0.64)
-	for side in [-1.0, 1.0]:
-		_box("SideWall", Vector3(0.5, 2, _half.y * 2), Vector3(side * _half.x, 0.9, 0), Color(0.17, 0.21, 0.23), true)
-		_box("EndWall", Vector3(_half.x * 2, 1.0, 0.5), Vector3(0, 0.4, side * _half.y), Color(0.18, 0.23, 0.25), true)
+	_art = PAINTED_MAP.new()
+	world.add_child(_art)
+	_art.call("build", stage)
 
 func _build_office() -> void:
-	_sign("被撤销的一天\n办公室", Vector3(0, 3.5, -16), Color(0.8, 0.88, 0.85), 66)
-	for x in [-12.0, -5.0, 3.0, 11.0]:
-		for z in [3.0, -5.0]:
-			_desk(Vector3(x, 0, z), not (x == -12.0 and z == 3.0))
-	# Meeting room: low glass partitions leave the central doorway visible.
-	for x in [-6.0, 6.0]:
-		_box("MeetingGlass", Vector3(0.2, 1.6, 7), Vector3(x, 0.8, -12), Color(0.22, 0.36, 0.39), true)
-	_box("MeetingTable", Vector3(5, 0.5, 2), Vector3(0, 0.8, -12), Color(0.25, 0.19, 0.16), true)
-	for x in [-2.0, 0.0, 2.0]:
-		_box("AbsentSeat", Vector3(0.8, 0.45, 0.8), Vector3(x, 0.22, -14), Color(0.12, 0.16, 0.18))
-	_sign("缺席 / 缺席 / 缺席", Vector3(0, 2.5, -13), Color(0.67, 0.66, 0.62))
-	_box("Archive", Vector3(2, 2.4, 1.2), Vector3(15, 1.2, -7), Color(0.35, 0.40, 0.40), true)
-	_sign("日历\n同一天", Vector3(-18, 2.5, -12), Color(0.83, 0.76, 0.58), 50)
-	var positions := [Vector3(-5, 0, 5), Vector3(3, 0, 5), Vector3(13, 0, -2), Vector3(4, 0, -9), Vector3(-10, 0, -9), Vector3(-15, 0, -2)]
+	var positions := [Vector2(426, 446), Vector2(309, 642), Vector2(921, 449), Vector2(1270, 518), Vector2(529, 795), Vector2(565, 330)]
 	for i in range(6):
-		_add_interaction(EVIDENCE[i][0], positions[i], _read_evidence.bind(i), i < 5)
-	_add_interaction("清空的工位", Vector3(-12, 0, 5), _desk_memory)
-	_add_interaction("出口 / 直接离开", Vector3(18, 0, 11), _office_exit)
+		_add_interaction(EVIDENCE[i][0], _at(positions[i]), _read_evidence.bind(i), i < 5)
+	_add_interaction("清空的工位", _at(Vector2(664, 525)), _desk_memory)
+	_add_interaction("出口 / 直接离开", _at(Vector2(744, 938)), _office_exit)
 	for i in range(4):
-		var whisper := _sign(["他们都在议论我？", "缺席的座位", "我是不是没有用了？", "每个人都知道？"][i], Vector3(-15 + i * 9, 2.7, -2 + (i % 2) * 9), Color(0.7, 0.38, 0.37), 30)
+		var at := _at([Vector2(530, 280), Vector2(1250, 420), Vector2(740, 570), Vector2(1000, 650)][i])
+		var whisper := _sign(["他们都在议论我？", "缺席的座位", "我是不是没有用了？", "每个人都知道？"][i], at + Vector3.UP * 0.5, Color(0.7, 0.38, 0.37), 24)
 		whisper.set_meta("origin", whisper.position)
 		_subjective.append(whisper)
 
@@ -267,7 +261,7 @@ func _trace_responsibility() -> void:
 	hud.call("dialog", "责任追查", "提交记录说明了工作失误；邮件说明调整请求没有得到回应。\n证据支持区分个人功能困难和公司的选择；并不能把全部后果推导成关于自我价值的结论。", ["收好记录，面对残影"], [_start_wave])
 
 func _take_belongings() -> void:
-	_add_interaction("私人物品 · 水杯与笔记本", Vector3(-13, 0, 8), _belongings_found)
+	_add_interaction("私人物品 · 水杯与笔记本", _at(Vector2(880, 530)), _belongings_found)
 
 func _belongings_found() -> void:
 	hud.call("dialog", "我的东西还属于我", "笔记本里有认真完成的工作，也有没做好的部分。\n我把它和水杯带走。一次辞退没有撤销过去的努力。", ["带上物品，面对残影"], [_start_wave])
@@ -292,7 +286,7 @@ func _start_wave() -> void:
 			enemy.set("max_health", 92.0)
 			enemy.set("attack_damage", 13.0)
 			enemy.scale = Vector3.ONE * 1.25
-		enemy.position = Vector3(-14 + i * 7, 0, -1)
+		enemy.position = _at([Vector2(602, 570), Vector2(887, 550), Vector2(580, 368), Vector2(870, 315), Vector2(1110, 600)][i])
 		enemy.connect("defeated", _echo_defeated)
 		world.add_child(enemy)
 
@@ -300,19 +294,12 @@ func _echo_defeated(_enemy: Node) -> void:
 	enemies_left -= 1
 	if enemies_left <= 0:
 		office_fought = true
-		hud.call("dialog", "出口已打开", "那些重复的结论暂时安静下来。\n你可以回看还没读过的资料，或者从东南侧出口走向雨后的街道。", ["继续"], [Callable()])
+		hud.call("dialog", "出口已打开", "那些重复的结论暂时安静下来。\n你可以回看还没读过的资料，或者从南侧中央走廊走向雨后的街道。", ["继续"], [Callable()])
 
 func _build_street() -> void:
-	_sign("雨后街道 → 出租屋", Vector3(0, 2.0, -13), Color(0.7, 0.85, 0.9), 56)
-	for side in [-1.0, 1.0]:
-		_box("Building", Vector3(8, 3.5, 29), Vector3(side * 16, 1.75, 0), Color(0.16, 0.22, 0.25), true)
-		for z in [-10.0, 0.0, 10.0]:
-			_box("Window", Vector3(0.05, 1, 1.4), Vector3(side * 11.95, 2.2, z), Color(0.83, 0.63, 0.35))
-	for i in range(15):
-		_box("Puddle", Vector3(1.5 + (i % 3), 0.015, 1.1), Vector3(-8 + (i % 4) * 5, 0.015, 12 - floori(i / 4.0) * 6), Color(0.22, 0.33, 0.39))
-	_add_interaction("工资停发通知", Vector3(-6, 0, 6), _street_record.bind(0))
-	_add_interaction("没有拆开的信", Vector3(5, 0, -1), _street_record.bind(1))
-	_add_interaction("出租屋入口", Vector3(0, 0, -13), _enter_apartment)
+	_add_interaction("工资停发通知", _at(Vector2(1270, 665)), _street_record.bind(0))
+	_add_interaction("没有拆开的信", _at(Vector2(995, 477)), _street_record.bind(1))
+	_add_interaction("出租屋入口", _at(Vector2(1300, 305)), _enter_apartment)
 
 func _street_record(id: int) -> void:
 	var body := "工资停发后，房租、食物、交通与复诊支出同时挤进账本。经济压力是辞退带来的后果，也会增加恢复日常功能的困难。" if id == 0 else "我把信塞回口袋，推迟拆开它，也减少了外出。作息更混乱，睡眠与孤立感又反过来干扰注意和表达。"
@@ -323,21 +310,19 @@ func _enter_apartment() -> void:
 	hud.call("dialog", "出租屋 · 经济失意", "五类账单挡住了房间。\n靠近按 E 查看账单，或用攻击撕开纸墙。桌面原件始终可以回看。\n每解开一张账单，红色盖章会更多地占据房间。", ["查看这间屋子"], [Callable()])
 
 func _build_apartment() -> void:
-	_box("Bed", Vector3(3, 0.65, 4), Vector3(-12, 0.32, 7), Color(0.25, 0.32, 0.35), true)
-	_desk(Vector3(11, 0, 8), false)
-	_add_interaction("桌面原件 · 固定账目", Vector3(10, 0, 10), _original_bills)
-	_sign("没有拆完的信", Vector3(-12, 1.6, 5), Color(0.74, 0.73, 0.66))
+	_add_interaction("桌面原件 · 固定账目", _at(Vector2(820, 280)), _original_bills)
+	_arena_limit = Vector2(17, 9)
 	for i in range(5):
 		var body := StaticBody3D.new()
 		body.set_script(PAPER)
-		body.set("extent", Vector3(6.4, 2.4, 0.55))
-		body.position = Vector3(-12.8 + i * 6.4, 1.2, 0)
+		body.set("extent", Vector3(6.25, 1.6, 0.55))
+		body.position = Vector3(-12.8 + i * 6.4, 0.8, 5.2)
 		body.connect("torn", _bill_torn.bind(i))
 		world.add_child(body)
 		var label := Label3D.new()
 		label.text = BILLS[i][0]
-		label.font_size = 46
-		label.pixel_size = 0.014
+		label.font_size = 34
+		label.pixel_size = 0.012
 		label.position = Vector3(0, 0.4, 0.32)
 		label.modulate = Color(0.45, 0.07, 0.08)
 		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -374,7 +359,7 @@ func _original_bills() -> void:
 func _start_boss() -> void:
 	stamper = StaticBody3D.new()
 	stamper.set_script(STAMPER)
-	stamper.position = Vector3(0, 0, -6)
+	stamper.position = _at(Vector2(768, 590))
 	stamper.connect("defeated", _victory)
 	stamper.connect("phase_changed", _boss_phase_changed)
 	world.add_child(stamper)
@@ -432,8 +417,8 @@ func _draw_danger_edges() -> void:
 	var x := _arena_limit.x
 	var z := _arena_limit.y
 	for side in [-1.0, 1.0]:
-		_danger_edges.append(_box("ClosingPagesX", Vector3(16 - x, 0.07, 28), Vector3(side * (16 + x) * 0.5, 0.07, 0), Color(0.7, 0.08, 0.10, 0.72)))
-		_danger_edges.append(_box("ClosingPagesZ", Vector3(x * 2, 0.07, 14 - z), Vector3(0, 0.07, side * (14 + z) * 0.5), Color(0.7, 0.08, 0.10, 0.72)))
+		_danger_edges.append(_box("ClosingPagesX", Vector3(_half.x - x, 0.07, _half.y * 2), Vector3(side * (_half.x + x) * 0.5, 0.07, 0), Color(0.7, 0.08, 0.10, 0.72)))
+		_danger_edges.append(_box("ClosingPagesZ", Vector3(x * 2, 0.07, _half.y - z), Vector3(0, 0.07, side * (_half.y + z) * 0.5), Color(0.7, 0.08, 0.10, 0.72)))
 
 func _victory() -> void:
 	won = true
@@ -459,9 +444,9 @@ func _add_interaction(caption: String, at: Vector3, action: Callable, stable: bo
 	world.add_child(marker)
 	_interactions.append({"node": marker, "hint": caption, "action": action})
 	var color := Color(0.56, 0.88, 0.88) if stable else Color(0.85, 0.51, 0.42)
-	var border := _box("EvidenceBorder", Vector3(1.8, 0.035, 1.8), at + Vector3.UP * 0.02, color)
-	_box("EvidenceInset", Vector3(1.62, 0.04, 1.62), at + Vector3.UP * 0.03, Color(0.18, 0.25, 0.27))
-	_sign(caption + " [E]", at + Vector3.UP * 1.8, color, 30)
+	var border := _box("EvidenceBorder", Vector3(0.9, 0.035, 0.9), at + Vector3.UP * 0.02, color)
+	_box("EvidenceInset", Vector3(0.77, 0.04, 0.77), at + Vector3.UP * 0.03, Color(0.08, 0.14, 0.17))
+	_sign(caption + " [E]", at + Vector3.UP * 0.65, color, 24)
 	if not stable:
 		border.set_meta("origin", border.position)
 		_subjective.append(border)
