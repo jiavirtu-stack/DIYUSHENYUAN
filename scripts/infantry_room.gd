@@ -14,9 +14,9 @@ const BOSS_SCENE := "res://scenes/arena.tscn"
 @export var camera_follow_speed := 4.2
 @export_range(0.0, 5.0, 0.1) var camera_edge_look_ahead := 2.4
 
-const HALF_WIDTH := 18.0
-const HALF_DEPTH := 15.0
-const EXIT_POSITION := Vector3(0.0, 0.0, -13.1)
+const HALF_WIDTH := 28.0
+const HALF_DEPTH := 22.0
+const EXIT_POSITION := Vector3(0.0, 0.0, -20.1)
 
 var _camera: Camera3D
 var _camera_target := Vector3(0.0, 1.5, 0.0)
@@ -37,7 +37,7 @@ func _ready() -> void:
 	randomize()
 	var run_state := get_node_or_null("/root/RunState")
 	_room_number = clampi((run_state.cleared_rooms if run_state != null else 0) + 1, 1, 3)
-	_room_exit = Vector3(0.0, 0.0, -13.1)
+	_room_exit = EXIT_POSITION
 	_build_world_environment()
 	_build_room()
 	_build_obstacles()
@@ -61,20 +61,24 @@ func _process(delta: float) -> void:
 	if not _door_open and _remaining_enemies <= 0:
 		_open_exit_gate()
 	if _door_open and not _transitioning and is_instance_valid(_player):
-		if _room_number < 3 and _player.global_position.z <= -14.7 and absf(_player.global_position.x) <= 2.0:
+		if _room_number < 3 and _player.global_position.z <= -22.8 and absf(_player.global_position.x) <= 2.0:
 			_enter_next_area()
 
 
 func set_camera_target(world_position: Vector3) -> void:
-	# Near an edge, shift the view target toward the room interior so the player
-	# stays comfortably framed and the camera does not reveal the void beyond walls.
-	var edge_x := clampf(world_position.x / HALF_WIDTH, -1.0, 1.0)
-	var edge_z := clampf(world_position.z / HALF_DEPTH, -1.0, 1.0)
-	var camera_x := world_position.x - edge_x * camera_edge_look_ahead
-	var camera_z := world_position.z - edge_z * camera_edge_look_ahead
-	camera_x = clampf(camera_x, -HALF_WIDTH + 2.0, HALF_WIDTH - 2.0)
-	camera_z = clampf(camera_z, -HALF_DEPTH + 2.0, HALF_DEPTH - 2.0)
-	if _door_open and _room_number < 3 and world_position.z < -12.8:
+	# Keep the camera centered on the player until its viewport reaches a room
+	# edge, then lock it there so the room geometry fills the frame without void.
+	var viewport_size := get_viewport().get_visible_rect().size
+	var aspect := viewport_size.x / maxf(1.0, viewport_size.y)
+	var half_view_width := camera_ortho_size * aspect * 0.5
+	var half_view_depth := camera_ortho_size * 0.5 / maxf(0.25, cos(deg_to_rad(camera_pitch)))
+	var x_min := -HALF_WIDTH + half_view_width
+	var x_max := HALF_WIDTH - half_view_width
+	var z_min := -HALF_DEPTH + half_view_depth
+	var z_max := HALF_DEPTH - half_view_depth
+	var camera_x := clampf(world_position.x, minf(x_min, x_max), maxf(x_min, x_max))
+	var camera_z := clampf(world_position.z, minf(z_min, z_max), maxf(z_min, z_max))
+	if _door_open and _room_number < 3 and world_position.z < -19.8:
 		camera_z = world_position.z
 	_camera_target = Vector3(camera_x, 1.45, camera_z)
 	var distance := 24.0
@@ -83,8 +87,8 @@ func set_camera_target(world_position: Vector3) -> void:
 
 
 func clamp_to_arena(world_position: Vector3, margin: float = 0.65) -> Vector3:
-	if _door_open and _room_number < 3 and absf(world_position.x) <= 2.0 and world_position.z < -12.8:
-		return Vector3(world_position.x, world_position.y, minf(world_position.z, -15.5))
+	if _door_open and _room_number < 3 and absf(world_position.x) <= 2.0 and world_position.z < -19.8:
+		return Vector3(world_position.x, world_position.y, minf(world_position.z, -23.0))
 	return Vector3(
 		clampf(world_position.x, -HALF_WIDTH + margin, HALF_WIDTH - margin),
 		world_position.y,
@@ -219,7 +223,7 @@ func _build_obstacles() -> void:
 		mesh.height = mesh.radius * randf_range(0.5, 0.9)
 		rubble.mesh = mesh
 		rubble.material_override = stone_material
-		rubble.position = Vector3(randf_range(-16.0, 16.0), 0.06, randf_range(-13.0, 13.0))
+		rubble.position = Vector3(randf_range(-HALF_WIDTH + 2.0, HALF_WIDTH - 2.0), 0.06, randf_range(-HALF_DEPTH + 2.0, HALF_DEPTH - 2.0))
 		rubble.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(rubble)
 
@@ -256,10 +260,10 @@ func _build_exit_gate() -> void:
 	seal.emission_enabled = true
 	seal.emission = Color(0.12, 0.19, 0.045)
 	seal.emission_energy_multiplier = 0.65
-	_add_box("ExitPillarLeft", Vector3(0.85, 3.3, 1.15), Vector3(-2.5, 1.65, -14.8), stone, false)
-	_add_box("ExitPillarRight", Vector3(0.85, 3.3, 1.15), Vector3(2.5, 1.65, -14.8), stone, false)
-	_add_box("ExitLintel", Vector3(5.7, 0.8, 1.25), Vector3(0.0, 3.1, -14.8), stone, false)
-	_add_box("PortalDarkness", Vector3(3.6, 3.0, 0.18), Vector3(0.0, 1.5, -14.45), dark, false)
+	_add_box("ExitPillarLeft", Vector3(0.85, 3.3, 1.15), Vector3(-2.5, 1.65, -21.8), stone, false)
+	_add_box("ExitPillarRight", Vector3(0.85, 3.3, 1.15), Vector3(2.5, 1.65, -21.8), stone, false)
+	_add_box("ExitLintel", Vector3(5.7, 0.8, 1.25), Vector3(0.0, 3.1, -21.8), stone, false)
+	_add_box("PortalDarkness", Vector3(3.6, 3.0, 0.18), Vector3(0.0, 1.5, -21.45), dark, false)
 	var rune := MeshInstance3D.new()
 	var rune_mesh := CylinderMesh.new()
 	rune_mesh.top_radius = 0.62
@@ -268,7 +272,7 @@ func _build_exit_gate() -> void:
 	rune.mesh = rune_mesh
 	rune.material_override = seal
 	rune.rotation_degrees.x = 90.0
-	rune.position = Vector3(0.0, 2.05, -14.30)
+	rune.position = Vector3(0.0, 2.05, -21.30)
 	add_child(rune)
 	_exit_glow = MeshInstance3D.new()
 	var glow_mesh := PlaneMesh.new()
@@ -281,7 +285,7 @@ func _build_exit_gate() -> void:
 	glow_material.emission = Color(0.25, 0.72, 0.12)
 	glow_material.emission_energy_multiplier = 1.1
 	_exit_glow.material_override = glow_material
-	_exit_glow.position = Vector3(0.0, 1.55, -14.27)
+	_exit_glow.position = Vector3(0.0, 1.55, -21.27)
 	_exit_glow.visible = false
 	add_child(_exit_glow)
 	_door_blocker = StaticBody3D.new()
@@ -290,7 +294,7 @@ func _build_exit_gate() -> void:
 	var blocker_box := BoxShape3D.new()
 	blocker_box.size = Vector3(3.5, 3.0, 0.55)
 	blocker_shape.shape = blocker_box
-	blocker_shape.position = Vector3(0.0, 1.5, -14.2)
+	blocker_shape.position = Vector3(0.0, 1.5, -21.2)
 	_door_blocker.add_child(blocker_shape)
 	add_child(_door_blocker)
 
