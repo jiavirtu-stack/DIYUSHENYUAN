@@ -11,6 +11,13 @@ func _ready() -> void:
 	start_button.pressed.connect(_on_start_pressed)
 	settings_button.pressed.connect(_show_settings)
 	exit_button.pressed.connect(get_tree().quit)
+	var practice := Button.new()
+	practice.text = "卡牌练习 · 五技能"
+	practice.position = Vector2(820, 820)
+	practice.size = Vector2(280, 56)
+	practice.add_theme_font_size_override("font_size", 24)
+	practice.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/chapter01/card_practice.tscn"))
+	add_child(practice)
 	for button in [start_button, settings_button, exit_button]:
 		var style := StyleBoxFlat.new()
 		style.bg_color = Color(0.16,0.105,0.075)

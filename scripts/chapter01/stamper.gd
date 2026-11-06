@@ -21,6 +21,8 @@ var _shells: Array[Node3D] = []
 var _art_sprite: Sprite3D
 
 func _ready() -> void:
+	add_to_group("card_targets")
+	add_to_group("card_boss")
 	collision_layer = 2
 	var collision := CollisionShape3D.new()
 	var shape := BoxShape3D.new()

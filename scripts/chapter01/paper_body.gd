@@ -9,6 +9,8 @@ var extent := Vector3(3.0, 2.0, 0.5)
 var moving := false
 
 func _ready() -> void:
+	add_to_group("card_targets")
+	add_to_group("card_paper")
 	collision_layer = 3
 	collision_mask = 0
 	var collision := CollisionShape3D.new()

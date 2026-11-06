@@ -18,6 +18,10 @@ var _lock_release := false
 var _cards: Array[Button] = []
 var _skill_hint: Label
 var _loss_shown := false
+var _cooldown_masks: Array[ColorRect] = []
+var _cooldown_labels: Array[Label] = []
+var _message := ""
+var _message_left := 0.0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -59,17 +63,31 @@ func _ready() -> void:
 	root.add_child(hand)
 	for i in range(5):
 		var card := Button.new()
-		card.text = ["Ⅰ  直线光波", "Ⅱ  未装备", "Ⅲ  未装备", "Ⅳ  未装备", "Ⅴ  未装备"][i]
+		card.text = ["Ⅰ  雷贯光波", "Ⅱ  余烬回信", "Ⅲ  霜封档案", "Ⅳ  追索火种", "Ⅴ  逆风回廊"][i]
 		card.custom_minimum_size = Vector2(180, 70)
 		card.size = Vector2(180, 85)
 		card.position = Vector2(i * 174, absf(i - 2.0) * 10.0)
 		card.pivot_offset = Vector2(90, 42)
 		card.rotation_degrees = (i - 2) * 4.0
 		card.set_meta("base_y", card.position.y)
-		card.add_theme_font_size_override("font_size", 20)
+		card.add_theme_font_size_override("font_size", 18)
 		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		hand.add_child(card)
 		_cards.append(card)
+		var mask := ColorRect.new()
+		mask.color = Color(0.015, 0.025, 0.05, 0.65)
+		mask.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mask.z_index = 1
+		card.add_child(mask)
+		_cooldown_masks.append(mask)
+		var timer := _label("就绪", 16)
+		timer.position = Vector2(0, 60)
+		timer.size = Vector2(180, 22)
+		timer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		timer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		timer.z_index = 2
+		card.add_child(timer)
+		_cooldown_labels.append(timer)
 	_skill_hint = _label("滚轮选牌 · 中键单击锁定 · 再按住瞄准，松开发射 · 右键解除", 18)
 	_skill_hint.position = Vector2(480, 1006)
 	root.add_child(_skill_hint)
@@ -97,9 +115,20 @@ func _ready() -> void:
 	panel_content = VBoxContainer.new()
 	panel_content.add_theme_constant_override("separation", 18)
 	panel.add_child(panel_content)
+	room.get("skills").connect("cast_denied", _skill_denied)
+	if bool(room.get("card_practice")):
+		var reset := Button.new()
+		reset.text = "重置练习目标与 CD"
+		reset.position = Vector2(1650, 96)
+		reset.size = Vector2(230, 55)
+		reset.pressed.connect(room.reset_practice)
+		root.add_child(reset)
 	_update_cards()
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if not get_tree().paused:
+		_message_left = maxf(0.0, _message_left - delta)
+	_update_cards()
 	objective.text = room.call("get_hud_status")
 	hint.text = room.call("get_interaction_hint")
 	var player: Node = room.get("player")
@@ -140,6 +169,8 @@ func dialog(heading: String, body: String, options: Array, callbacks: Array) -> 
 	var player: Node = room.get("player")
 	if is_instance_valid(player):
 		player.call("cancel_beam_charge")
+	room.get("skills").call("cancel_aim")
+	_lock_release = false
 	get_tree().paused = true
 
 func _choose(callback: Callable) -> void:
@@ -175,6 +206,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var mouse := event as InputEventMouseButton
 	var player: Node = room.get("player")
+	var skills: Node = room.get("skills")
 	if mouse.pressed and mouse.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and _locked < 0:
 		_selected = posmod(_selected + (-1 if mouse.button_index == MOUSE_BUTTON_WHEEL_UP else 1), 5)
 		player.call("set_selected_card", _selected)
@@ -182,24 +214,39 @@ func _unhandled_input(event: InputEvent) -> void:
 		_locked = -1
 		_lock_release = false
 		player.call("cancel_beam_charge")
+		skills.call("cancel_aim")
 	elif mouse.button_index == MOUSE_BUTTON_MIDDLE:
 		if mouse.pressed:
 			if _locked < 0:
 				_locked = _selected
 				_lock_release = true
-			elif _locked == 0:
-				player.call("begin_beam_charge")
+			else:
+				skills.call("begin_aim", _locked)
 		elif _lock_release:
 			_lock_release = false
-		elif _locked == 0:
-			player.call("release_beam")
+		elif _locked >= 0:
+			skills.call("release_aim")
+	if mouse.button_index in [MOUSE_BUTTON_MIDDLE, MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		get_viewport().set_input_as_handled()
 	_update_cards()
 
 func _update_cards() -> void:
+	var skills: Node = room.get("skills")
+	var names := ["雷贯光波", "余烬回信", "霜封档案", "追索火种", "逆风回廊"]
+	var colors := [Color(0.65, 0.58, 1), Color(1, 0.48, 0.25), Color(0.5, 0.91, 1), Color(1, 0.77, 0.3), Color(0.4, 0.88, 0.71)]
 	for i in range(_cards.size()):
-		_cards[i].modulate = Color(1, 0.8, 0.45) if i == _selected else Color(0.45, 0.5, 0.52)
+		_cards[i].modulate = colors[i] if i == _selected else colors[i] * Color(0.75, 0.75, 0.75, 1)
 		_cards[i].position.y = float(_cards[i].get_meta("base_y")) - (18.0 if i == _locked else 0.0)
-	_skill_hint.text = "已锁定直线光波 · 按住中键瞄准，松开发射 · 右键解除" if _locked == 0 else ("该槽位未装备技能 · 右键解除" if _locked > 0 else "滚轮选牌 · 中键单击锁定 · 再按住瞄准，松开发射 · 右键解除")
+		var left: float = skills.cooldowns[i]
+		_cooldown_masks[i].size = Vector2(180, 85.0 * left / float(skills.COOLDOWNS[i]))
+		_cooldown_labels[i].text = ("%.1f 秒" % left if left < 3.0 else "%d 秒" % ceili(left)) if left > 0.0 else ("已锁定 · 就绪" if i == _locked else "就绪")
+	_skill_hint.text = "已锁定「%s」· 按住中键瞄准，松开发射 · 右键解除" % names[_locked] if _locked >= 0 else "滚轮选牌 · 中键单击锁定 · 再按住瞄准，松开发射 · 右键解除"
+	if _message_left > 0.0:
+		_skill_hint.text = _message
+
+func _skill_denied(reason: String) -> void:
+	_message = reason
+	_message_left = 1.2
 
 func restart() -> void:
 	get_tree().paused = false

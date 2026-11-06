@@ -19,10 +19,14 @@ var _elapsed := 0.0
 var _visual_root: Node3D
 var _body_material: StandardMaterial3D
 var _telegraph: MeshInstance3D
+var _card_speed_factor := 1.0
+var _card_frozen := false
+var _card_forced_velocity := Vector3.ZERO
 
 
 func _ready() -> void:
 	add_to_group("minions")
+	add_to_group("card_targets")
 	collision_layer = 2
 	collision_mask = 1
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
@@ -35,6 +39,9 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	if _dead or get_tree().paused:
+		return
+	if _card_frozen:
+		velocity = Vector3.ZERO
 		return
 	_elapsed += delta
 	_attack_cooldown = maxf(0.0, _attack_cooldown - delta)
@@ -51,7 +58,7 @@ func _physics_process(delta: float) -> void:
 	_visual_root.position.y = 0.03 + sin(_elapsed * 8.0) * 0.025
 	if _windup_timer > 0.0:
 		_windup_timer -= delta
-		velocity = _knockback_velocity
+		velocity = _knockback_velocity + _card_forced_velocity
 		if _windup_timer <= 0.0:
 			_perform_attack()
 	elif distance <= attack_range and _attack_cooldown <= 0.0:
@@ -61,11 +68,18 @@ func _physics_process(delta: float) -> void:
 		_telegraph.visible = true
 	else:
 		var move_direction := _get_move_direction(direction) if distance > attack_range * 0.82 else Vector3.ZERO
-		velocity = move_direction * move_speed + _knockback_velocity
+		velocity = move_direction * move_speed * _card_speed_factor + _knockback_velocity + _card_forced_velocity
 	move_and_slide()
 
 func _get_move_direction(direction: Vector3) -> Vector3:
 	return direction
+
+func set_card_control(speed_factor: float, frozen: bool, forced_velocity: Vector3) -> void:
+	_card_speed_factor = clampf(speed_factor, 0.1, 1.0)
+	_card_frozen = frozen
+	_card_forced_velocity = forced_velocity
+	if is_instance_valid(_visual_root):
+		_visual_root.scale = Vector3.ONE * (0.95 if frozen else 1.0)
 
 
 func receive_hit(damage: float, knockback: Vector3, _hit_position: Vector3) -> void:

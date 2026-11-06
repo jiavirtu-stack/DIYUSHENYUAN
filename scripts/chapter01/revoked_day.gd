@@ -7,6 +7,9 @@ const ECHO := preload("res://scripts/chapter01/office_echo.gd")
 const PAPER := preload("res://scripts/chapter01/paper_body.gd")
 const STAMPER := preload("res://scripts/chapter01/stamper.gd")
 const PAINTED_MAP := preload("res://scripts/chapter01/painted_map.gd")
+const SKILLS := preload("res://scripts/cards/card_skills.gd")
+
+@export var card_practice := false
 
 const EVIDENCE := [
 	["迟交记录", "[可核对 · 提交系统]\n两次报告晚于约定时间，其中一份存在遗漏。记录说明任务完成遇到了困难；它没有记录一个人的价值。"],
@@ -27,6 +30,7 @@ const BILLS := [
 var player: FairytalePlayer
 var stamper: Node3D
 var hud: CanvasLayer
+var skills: Node3D
 var world: Node3D
 var camera: Camera3D
 var stage := 0
@@ -85,15 +89,25 @@ func _ready() -> void:
 	add_child(player)
 	player.process_mode = Node.PROCESS_MODE_PAUSABLE
 	player.get_node("Visual").scale = Vector3.ONE * 1.25
+	skills = SKILLS.new()
+	skills.name = "CardSkills"
+	add_child(skills)
 	hud = CanvasLayer.new()
 	hud.name = "ChapterHUD"
 	hud.set_script(HUD)
 	add_child(hud)
+	if card_practice:
+		_load_stage(2)
+		reset_practice()
+		hud.call("dialog", "五卡练习", "五张卡均已装备，冷却分别为 6 / 10 / 12 / 9 / 14 秒。\n\n滚轮选牌 → 中键单击锁定 → 再按住瞄准、松开施放。右键解除锁定。\n练习中不会受到伤害；右上角可重置目标和冷却。", ["开始练习"], [Callable()])
+		return
 	_load_stage(0)
 	hud.call("dialog", "第一关 · 被撤销的一天", "我回到了被清空的工位前。\n墙上的日期没有变化。先把发生过的事，与脑海里反复出现的结论分开。\n\n靠近方框资料按 E 查看；Tab 随时打开调查记录。\nWASD 移动，左键攻击，Shift / Space 闪避。", ["开始调查"], [Callable()])
 
 func _load_stage(next: int) -> void:
 	_changing = true
+	if is_instance_valid(skills):
+		skills.call("clear_effects")
 	if is_instance_valid(world):
 		remove_child(world)
 		world.queue_free()
@@ -123,6 +137,8 @@ func _physics_process(delta: float) -> void:
 	if _changing or won or player.health <= 0.0:
 		return
 	_elapsed += delta
+	if card_practice:
+		player.set("_invulnerability_timer", 1.0)
 	var disturbance := records.size() / 6.0 * 0.55 if stage == 0 else (0.4 if stage == 1 else bills_done.size() / 5.0 * 0.65)
 	_art.material.set_shader_parameter("disturbance", disturbance)
 	for node in _subjective:
@@ -199,6 +215,8 @@ func _nearest() -> Dictionary:
 	return result
 
 func get_interaction_hint() -> String:
+	if card_practice:
+		return "五卡练习 · 右键解除锁定后可换牌 · 冷却结束需重新按下施放"
 	if won:
 		return "已获得：因果记录卡"
 	var nearest := _nearest()
@@ -207,6 +225,8 @@ func get_interaction_hint() -> String:
 	return "WASD 移动 · E 查看 · Tab 调查记录 · 左键攻击 · Shift / Space 闪避"
 
 func get_hud_status() -> String:
+	if card_practice:
+		return "卡牌练习 · 五种技能 · 独立冷却 · 练习中免伤"
 	if stage == 0:
 		if wave_started and not office_fought:
 			return "办公室 · 清除结论残影 %d / 5" % (5 - enemies_left)
@@ -422,6 +442,7 @@ func _draw_danger_edges() -> void:
 
 func _victory() -> void:
 	won = true
+	skills.call("clear_effects")
 	var run_state := get_node_or_null("/root/RunState")
 	if run_state != null:
 		run_state.causal_record_obtained = true
@@ -430,6 +451,29 @@ func _victory() -> void:
 			child.queue_free()
 	var body := "病情确实影响了工作功能，沟通与支持的缺失、公司的选择和经济压力也共同塑造了后果。\n\n失业不能被直接盖成“我没有价值”。\n\n获得【因果记录卡】\n功能困难 ≠ 环境选择 ≠ 个人价值\n\n办公室资料：%d / 6；账单原件：5 / 5（可在调查记录回看）。" % records.size()
 	hud.call("dialog", "因果记录卡 · 被撤销的不是我", body, ["留在房间回看记录", "重新调查", "返回标题"], [Callable(), Callable(hud, "restart"), Callable(hud, "to_menu")])
+
+func reset_practice() -> void:
+	skills.call("clear_effects")
+	skills.call("reset_cooldowns")
+	for target in get_tree().get_nodes_in_group("card_targets"):
+		if world.is_ancestor_of(target):
+			target.queue_free()
+	_interactions.clear()
+	player.health = player.max_health
+	player.position = _at(Vector2(770, 640))
+	_last_player_position = player.position
+	for i in range(5):
+		var enemy := CharacterBody3D.new()
+		enemy.set_script(ECHO)
+		enemy.set("max_health", 180.0 if i == 4 else 60.0)
+		enemy.set("move_speed", 0.8)
+		enemy.position = _at(Vector2(540 + i * 105, 490))
+		world.add_child(enemy)
+	var paper := StaticBody3D.new()
+	paper.set_script(PAPER)
+	paper.position = _at(Vector2(1070, 650)) + Vector3.UP
+	paper.set("extent", Vector3(2.5, 2.0, 0.4))
+	world.add_child(paper)
 
 func _desk(at: Vector3, monitor: bool) -> void:
 	_box("Desk", Vector3(3.4, 0.2, 1.5), at + Vector3.UP * 0.9, Color(0.48, 0.44, 0.35), true)
