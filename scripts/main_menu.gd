@@ -46,4 +46,4 @@ func _on_start_pressed() -> void:
 	if run_state != null:
 		run_state.carried_health = -1.0
 		run_state.cleared_rooms = 0
-	get_tree().change_scene_to_file("res://scenes/infantry_room.tscn")
+	get_tree().change_scene_to_file("res://scenes/chapter01/revoked_day.tscn")

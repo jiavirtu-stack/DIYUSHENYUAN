@@ -6,7 +6,8 @@
 
 - 引擎：Godot 4.x（当前项目使用 Godot 4.7.2）。
 - 类型：暗黑童话风 2.5D 动作 Roguelite 原型。
-- 当前主流程：主菜单 → 三个小兵探索房 → 房间间走廊 → Boss 房。
+- 当前主流程：主菜单 → 第一关《被撤销的一天》→ 办公室调查/残影战 → 雨后街道 → 出租屋账单 → 盖章者 Boss 战。
+- 新关卡入口：`res://scenes/chapter01/revoked_day.tscn`；实现与体验说明：`docs/第一关_被撤销的一天_实现说明.md`。旧小兵/Boss MVP 场景可单独运行。
 - 主场景：`res://scenes/main_menu.tscn`。
 - 项目配置：`project.godot`；全局运行状态：`scripts/run_state.gd`。
 - 详细背景：先读 `README.md`、`README_新手启动指南.md`、`docs/` 下策划/资产/QA 文档。
@@ -16,7 +17,7 @@
 将下面内容交给你的编码 Agent，并同时开放本 Git 仓库：
 
 ```text
-你将协作 Godot 项目《烛渊：仪式残响》。先阅读仓库根目录的“团队协作与Agent交接.md”、README.md、README_新手启动指南.md，以及与你任务相关的 docs/ 文档。项目运行主场景是 res://scenes/main_menu.tscn，当前流程为三个小兵房、连接走廊、Boss 房；Godot 版本为 4.7.2。
+你将协作 Godot 项目《烛渊：仪式残响》。先阅读仓库根目录的“团队协作与Agent交接.md”、docs/第一关_被撤销的一天_实现说明.md，以及与你任务相关的 docs/ 文档。项目运行主场景是 res://scenes/main_menu.tscn，当前第一关入口为 res://scenes/chapter01/revoked_day.tscn；Godot 版本为 4.7.2。当前第一关是可玩流程原型，几何美术与战斗平衡仍需迭代。
 
 开始前先检查 git status 和当前分支。不要覆盖或丢弃其他人的未提交改动；不要自行重置、rebase 公共分支或强推。每项工作使用独立 feature/... 或 fix/... 分支。先定位现有实现并复用项目结构，再做最小完整改动；如改动输入、场景流程、资源路径或玩家/Boss接口，检查其调用方。
 
@@ -75,11 +76,10 @@
 
 - 当前工作分支：`codex/team-collaboration`。
 - 该分支承载近期关卡与协作文档相关改动；提交/推送前请先逐项审阅 `git status` 与 `git diff`。
-- 本地没有配置 Git remote，因此目前无法推送到 GitHub/GitLab。管理员创建远端后，设置：
+- 私有仓库：`https://github.com/jiavirtu-stack/DIYUSHENYUAN`；本机已配置 origin。新成员获得仓库权限后克隆：
 
   ```bash
-  git remote add origin <团队仓库地址>
-  git push -u origin codex/team-collaboration
+  git clone --branch codex/team-collaboration https://github.com/jiavirtu-stack/DIYUSHENYUAN.git
   ```
 
 - 仓库管理员应确认默认分支名称、访问权限、PR 审核规则，以及是否启用 LFS。

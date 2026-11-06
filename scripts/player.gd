@@ -16,6 +16,7 @@ const ATTACK_DATA_PATHS := ["res://resources/attacks/light_1.tres", "res://resou
 @export_range(0.0, 0.4, 0.01) var dodge_invulnerability := 0.22
 @export_range(5.0, 14.0, 0.1) var dodge_speed := 9.2
 @export var max_health := 100.0
+@export var external_pause_control := false
 @export_range(1.0, 100.0, 1.0) var beam_damage := 34.0
 @export_range(4.0, 24.0, 0.5) var beam_range := 18.0
 
@@ -92,7 +93,7 @@ func _physics_process(delta: float) -> void:
 	_invulnerability_timer = maxf(0.0, _invulnerability_timer - delta)
 	if _attack_stage >= 0:
 		_update_attack(delta)
-	if Input.is_action_just_pressed("pause"):
+	if Input.is_action_just_pressed("pause") and not external_pause_control:
 		get_tree().paused = not get_tree().paused
 	if get_tree().paused:
 		velocity = Vector3.ZERO

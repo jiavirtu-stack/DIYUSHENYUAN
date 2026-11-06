@@ -40,7 +40,7 @@ offset_right = 1280.0
 offset_bottom = 450.0
 theme_override_colors/font_color = Color(0.57, 0.49, 0.43, 1)
 theme_override_font_sizes/font_size = 22
-text = "2.5D 暗黑童话 · 清剿沉没村落，深入首领房"
+text = "第一关 · 被撤销的一天"
 horizontal_alignment = 1
 
 [node name="StartButton" type="Button" parent="."]
@@ -50,7 +50,7 @@ offset_top = 520.0
 offset_right = 1080.0
 offset_bottom = 585.0
 theme_override_font_sizes/font_size = 26
-text = "开始探索"
+text = "开始调查"
 
 [node name="SettingsButton" type="Button" parent="."]
 layout_mode = 0
@@ -73,9 +73,9 @@ text = "退出"
 [node name="Hint" type="Label" parent="."]
 layout_mode = 0
 offset_left = 640.0
-offset_top = 650.0
+offset_top = 760.0
 offset_right = 1280.0
-offset_bottom = 690.0
+offset_bottom = 800.0
 theme_override_colors/font_color = Color(0.45, 0.39, 0.37, 1)
-text = "阶段 2 · 主角移动"
+text = "WASD 移动 · E 交互 · Tab 调查记录"
 horizontal_alignment = 1

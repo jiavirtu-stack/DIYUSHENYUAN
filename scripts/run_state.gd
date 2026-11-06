@@ -4,3 +4,4 @@ var selected_buff := -1
 var last_buff_label := ""
 var carried_health := -1.0
 var cleared_rooms := 0
+var causal_record_obtained := false
