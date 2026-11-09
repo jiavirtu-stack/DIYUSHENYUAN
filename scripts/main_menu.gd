@@ -5,29 +5,81 @@ extends Control
 @onready var start_button: Button = $StartButton
 @onready var settings_button: Button = $SettingsButton
 @onready var exit_button: Button = $ExitButton
+var _entries: Array[Button] = []
+var _selected := 0
+var _diamond: Label
+var _dust: Control
 
 
 func _ready() -> void:
+	for child_name in ["Background", "Title", "Subtitle", "Hint"]:
+		get_node(child_name).hide()
+	var art := TextureRect.new()
+	art.texture = load("res://assets/menu/title_clean.png")
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art.z_index = -10
+	add_child(art)
+	_dust = Control.new()
+	_dust.set_script(load("res://scripts/title_dust.gd"))
+	_dust.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_dust.z_index = -1
+	add_child(_dust)
 	start_button.pressed.connect(_on_start_pressed)
 	settings_button.pressed.connect(_show_settings)
 	exit_button.pressed.connect(get_tree().quit)
 	var practice := Button.new()
 	practice.text = "卡牌练习 · 五技能"
-	practice.position = Vector2(820, 820)
-	practice.size = Vector2(280, 56)
-	practice.add_theme_font_size_override("font_size", 24)
+	practice.position = Vector2(1550, 1008)
+	practice.size = Vector2(290, 42)
+	practice.add_theme_font_size_override("font_size", 20)
+	practice.flat = true
 	practice.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/chapter01/card_practice.tscn"))
 	add_child(practice)
-	for button in [start_button, settings_button, exit_button]:
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0.16,0.105,0.075)
-		style.border_color = Color(0.56,0.36,0.21)
-		style.set_border_width_all(2)
-		style.set_corner_radius_all(6)
-		button.add_theme_stylebox_override("normal",style)
-		var hover := style.duplicate() as StyleBoxFlat
-		hover.bg_color = Color(0.29,0.17,0.105)
-		button.add_theme_stylebox_override("hover",hover)
+	_entries = [start_button, settings_button, exit_button]
+	var font := SystemFont.new()
+	font.font_names = PackedStringArray(["SimHei", "Microsoft YaHei"])
+	font.antialiasing = TextServer.FONT_ANTIALIASING_NONE
+	for i in range(3):
+		var button := _entries[i]
+		button.text = ["开始游戏", "设置", "退出游戏"][i]
+		button.position = Vector2(150, 740 + i * 75)
+		button.size = Vector2(320, 66)
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.add_theme_font_override("font", font)
+		button.add_theme_font_size_override("font_size", 48)
+		for state in ["normal", "hover", "pressed", "focus"]:
+			button.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+		button.add_theme_color_override("font_hover_color", Color(0.98, 0.98, 0.94))
+		button.add_theme_color_override("font_focus_color", Color(0.98, 0.98, 0.94))
+		button.mouse_entered.connect(_select.bind(i))
+		button.focus_entered.connect(_select.bind(i))
+	_diamond = Label.new()
+	_diamond.text = "◆"
+	_diamond.add_theme_font_size_override("font_size", 34)
+	_diamond.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_diamond)
+	_select(0)
+
+func _select(index: int) -> void:
+	_selected = posmod(index, 3)
+	_dust.set("selected", _selected)
+	for i in range(3):
+		_entries[i].add_theme_color_override("font_color", Color(0.98, 0.98, 0.95) if i == _selected else Color(0.57, 0.79, 0.91))
+	_diamond.position = Vector2(94, 751 + _selected * 75)
+
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not event.is_pressed() or event.is_echo():
+		return
+	if event.is_action("ui_down") or event.is_action("ui_up"):
+		_select(_selected + (1 if event.is_action("ui_down") else -1))
+		_entries[_selected].grab_focus()
+		get_viewport().set_input_as_handled()
+	elif event.is_action("ui_accept"):
+		_entries[_selected].pressed.emit()
+		get_viewport().set_input_as_handled()
 
 
 func _show_settings() -> void:
