@@ -9,6 +9,8 @@ var _entries: Array[Button] = []
 var _selected := 0
 var _diamond: Label
 var _dust: Control
+var _pixel_labels: Array[Label] = []
+var _pixel_views: Array[SubViewport] = []
 
 
 func _ready() -> void:
@@ -42,6 +44,9 @@ func _ready() -> void:
 	var font := SystemFont.new()
 	font.font_names = PackedStringArray(["SimHei", "Microsoft YaHei"])
 	font.antialiasing = TextServer.FONT_ANTIALIASING_NONE
+	var heavy := FontVariation.new()
+	heavy.base_font = font
+	heavy.variation_embolden = 0.7
 	for i in range(3):
 		var button := _entries[i]
 		button.text = ["开始游戏", "设置", "退出游戏"][i]
@@ -56,9 +61,38 @@ func _ready() -> void:
 		button.add_theme_color_override("font_focus_color", Color(0.98, 0.98, 0.94))
 		button.mouse_entered.connect(_select.bind(i))
 		button.focus_entered.connect(_select.bind(i))
+		# Render at a real 16px grid, then scale with nearest filtering. This
+		# keeps stepped pixel strokes and the thick outline at every resolution.
+		for color_name in ["font_color", "font_hover_color", "font_focus_color", "font_pressed_color"]:
+			button.add_theme_color_override(color_name, Color.TRANSPARENT)
+		var viewport := SubViewport.new()
+		viewport.size = Vector2i(84, 24)
+		viewport.transparent_bg = true
+		viewport.disable_3d = true
+		viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+		button.add_child(viewport)
+		var glyph := Label.new()
+		glyph.text = button.text
+		glyph.position = Vector2(3, 2)
+		glyph.add_theme_font_override("font", heavy)
+		glyph.add_theme_font_size_override("font_size", 16)
+		glyph.add_theme_constant_override("outline_size", 2)
+		glyph.add_theme_color_override("font_outline_color", Color(0.015, 0.018, 0.025))
+		viewport.add_child(glyph)
+		_pixel_labels.append(glyph)
+		_pixel_views.append(viewport)
+		var pixels := TextureRect.new()
+		pixels.texture = viewport.get_texture()
+		pixels.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		pixels.position = Vector2(-9, -3)
+		pixels.size = Vector2(252, 72)
+		pixels.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		button.add_child(pixels)
 	_diamond = Label.new()
 	_diamond.text = "◆"
-	_diamond.add_theme_font_size_override("font_size", 34)
+	_diamond.add_theme_font_size_override("font_size", 40)
+	_diamond.add_theme_constant_override("outline_size", 5)
+	_diamond.add_theme_color_override("font_outline_color", Color(0.01, 0.015, 0.025))
 	_diamond.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_diamond)
 	_select(0)
@@ -67,7 +101,8 @@ func _select(index: int) -> void:
 	_selected = posmod(index, 3)
 	_dust.set("selected", _selected)
 	for i in range(3):
-		_entries[i].add_theme_color_override("font_color", Color(0.98, 0.98, 0.95) if i == _selected else Color(0.57, 0.79, 0.91))
+		_pixel_labels[i].add_theme_color_override("font_color", Color(0.98, 0.98, 0.98) if i == _selected else Color(0.57, 0.79, 0.91))
+		_pixel_views[i].render_target_update_mode = SubViewport.UPDATE_ONCE
 	_diamond.position = Vector2(94, 751 + _selected * 75)
 
 func _unhandled_key_input(event: InputEvent) -> void:
