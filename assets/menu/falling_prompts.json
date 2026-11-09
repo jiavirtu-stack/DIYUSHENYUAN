@@ -1,0 +1,16 @@
+{
+  "tool": "built-in image_gen",
+  "reference": "title_clean.png",
+  "jobs": [
+    {
+      "key": "hero",
+      "prompt": "Background extraction for game parallax: Extract ONLY the falling hooded masked investigator character at center of supplied title illustration, including entire raised arms, boots, torn cloak, trailing red scarf, belt and hanging gold bell. Preserve exact original design, falling pose, shape, palette, pixel-art style and edge detail. Remove all lettering, architecture, paper, rocks and dark background. Genuinely transparent PNG, a single character full silhouette centered with 6% transparent padding. No shadow, no ground, no extra objects. Preserve dark clothing opaque. Output a square sprite asset.",
+      "transparent": true
+    },
+    {
+      "key": "shaft",
+      "prompt": "Edit supplied dark pixel-art game title illustration into a background layer for endless vertical falling parallax. Remove ALL Chinese and English title lettering, all UI, and the central hooded character. Preserve the cold blue-black palette, ruined blue stone architecture on the far left and right sides, curving depth bands and large clean dark central negative space. Develop it into an endless vertical abyss shaft: no closing floor, no visible bottom pit opening. Vertical top and bottom edges should match as closely as possible for seamless upward scrolling. Keep all architecture confined to outer 20% left/right, with deep black-blue space in the center so logo and hero can be overlaid. No characters or text, no bright points or glow, no fog sheet, no watermark. Wide 16:9 pixel art composition.",
+      "transparent": false
+    }
+  ]
+}

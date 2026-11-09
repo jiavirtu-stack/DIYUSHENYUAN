@@ -16,11 +16,9 @@ var _pixel_views: Array[SubViewport] = []
 func _ready() -> void:
 	for child_name in ["Background", "Title", "Subtitle", "Hint"]:
 		get_node(child_name).hide()
-	var art := TextureRect.new()
-	art.texture = load("res://assets/menu/title_clean.png")
+	var art := Control.new()
+	art.set_script(load("res://scripts/title_fall.gd"))
 	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	art.z_index = -10
 	add_child(art)

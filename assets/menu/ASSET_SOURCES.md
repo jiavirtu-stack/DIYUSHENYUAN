@@ -1,5 +1,14 @@
 # 启动界面
 
+## 下坠视差分层
+
+- `abyss_loop.png`：基于启动画面，经内置 image_gen 移除人物与标题，补成无封底的深渊长井背景。
+- `falling_hero.png`：内置 image_gen 提取的人物透明 PNG，保留坠落姿势、红围巾和铃铛。
+- 标题使用原 `title_clean.png` 的标题区域，通过运行时 AtlasTexture 与透明遮罩单独显示，避免重绘字体。
+- `scripts/title_fall.gd`：远景与墙体分别按 0.010 / 0.027 周期每秒向上滚动，近处碎屑以 32–105 逻辑像素/秒上升；人物漂移约 7 像素，摆动约 1.6 度，标题与交互菜单固定。
+- `shaders/title_scroll.gdshader`：循环采样与末端过渡混合；`shaders/title_logo.gdshader`：标题透明遮罩。
+- 生成提示词见 `falling_prompts.json`。原始静态图保留，运行时改为独立图层组合。
+
 用户提供《低语深渊》启动界面作为美术来源。`title_clean.png` 使用内置 image_gen 仅移除左下角已绘制的三项菜单、菱形与选中光晕，其余标题和构图保留。未覆盖原始素材。
 
 菜单由 Godot 的真实按钮还原，中文字体优先调用系统 SimHei / Microsoft YaHei 并禁用抗锯齿，不打包系统字体。文字以 16px 栅格渲染至透明 SubViewport，经最近邻放大三倍，加入加粗与厚黑描边以模仿参考像素字。其他系统可能使用不同的中文回退字体。漂浮碎屑和选中项周围 220 枚持续散开、回流、淡入淡出的方块由 `scripts/title_dust.gd` 绘制。
