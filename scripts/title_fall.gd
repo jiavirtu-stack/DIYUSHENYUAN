@@ -3,6 +3,7 @@ extends Control
 @export var far_speed := 0.010
 @export var wall_speed := 0.027
 @export var drift_amount := 7.0
+@export_range(0.0, 2.0, 0.1) var character_motion := 1.0
 
 var elapsed := 0.0
 var far_material: ShaderMaterial
@@ -11,6 +12,7 @@ var hero: TextureRect
 var logo: TextureRect
 var fragments: Array[Dictionary] = []
 var _hero_home := Vector2.ZERO
+var hero_material: ShaderMaterial
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -43,6 +45,10 @@ func _ready() -> void:
 	hero.pivot_offset = hero.size * 0.5
 	hero.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hero.z_index = 1
+	hero_material = ShaderMaterial.new()
+	hero_material.shader = load("res://shaders/falling_hero_motion.gdshader")
+	hero_material.set_shader_parameter("motion_strength", character_motion)
+	hero.material = hero_material
 	add_child(hero)
 	var random := RandomNumberGenerator.new()
 	random.seed = 7341
@@ -70,6 +76,7 @@ func _process(delta: float) -> void:
 	wall_material.set_shader_parameter("travel", fposmod(elapsed * wall_speed, 1.0))
 	hero.position = _hero_home + Vector2(sin(elapsed * 0.37) * drift_amount, sin(elapsed * 0.56) * drift_amount * 0.7)
 	hero.rotation = sin(elapsed * 0.41) * 0.028
+	hero_material.set_shader_parameter("animation_time", elapsed)
 	for fragment in fragments:
 		fragment.at.y -= fragment.speed * delta
 		if fragment.at.y < -30:

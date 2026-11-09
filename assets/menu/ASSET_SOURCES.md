@@ -8,6 +8,8 @@
 - `scripts/title_fall.gd`：远景与墙体分别按 0.010 / 0.027 周期每秒向上滚动，近处碎屑以 32–105 逻辑像素/秒上升；人物漂移约 7 像素，摆动约 1.6 度，标题与交互菜单固定。
 - `shaders/title_scroll.gdshader`：循环采样与末端过渡混合；`shaders/title_logo.gdshader`：标题透明遮罩。
 - 生成提示词见 `falling_prompts.json`。原始静态图保留，运行时改为独立图层组合。
+- `shaders/falling_hero_motion.gdshader` 在人物透明层上做局部 UV 变形：围巾末端气流波动、双手与双脚错相摆动、铃铛绕悬挂点延迟摇摆。不是完整逐帧或骨骼动画；保留原始人物 PNG，幅度由 `title_fall.gd` 的 `character_motion` 控制。
+- `tests/title_character_motion.gd` 对比两个时刻的实际渲染，检查围巾、手、脚与铃铛四个区域均存在变化。
 
 用户提供《低语深渊》启动界面作为美术来源。`title_clean.png` 使用内置 image_gen 仅移除左下角已绘制的三项菜单、菱形与选中光晕，其余标题和构图保留。未覆盖原始素材。
 
