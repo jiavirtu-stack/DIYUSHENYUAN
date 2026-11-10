@@ -16,6 +16,10 @@ var _attack_cooldown := 0.8
 var _attack_direction := Vector3.FORWARD
 var _knockback_velocity := Vector3.ZERO
 var _elapsed := 0.0
+var _hit_pause_left := 0.0
+var _health_fill: Sprite3D
+var _health_bar: Node3D
+static var _health_texture: ImageTexture
 var _visual_root: Node3D
 var _body_material: StandardMaterial3D
 var _telegraph: MeshInstance3D
@@ -34,11 +38,16 @@ func _ready() -> void:
 	_attack_cooldown = randf_range(0.25, 1.0)
 	_build_collision()
 	_build_visual()
+	_build_health_bar()
 	_target = get_tree().get_first_node_in_group("player") as FairytalePlayer
 
 
 func _physics_process(delta: float) -> void:
 	if _dead or get_tree().paused:
+		return
+	if _hit_pause_left > 0.0:
+		_hit_pause_left = maxf(0.0, _hit_pause_left - delta)
+		velocity = Vector3.ZERO
 		return
 	if _card_frozen:
 		velocity = Vector3.ZERO
@@ -82,10 +91,15 @@ func set_card_control(speed_factor: float, frozen: bool, forced_velocity: Vector
 		_visual_root.scale = Vector3.ONE * (0.95 if frozen else 1.0)
 
 
+func begin_hit_pause(duration: float) -> void:
+	if not _dead:
+		_hit_pause_left = maxf(_hit_pause_left, duration)
+
 func receive_hit(damage: float, knockback: Vector3, _hit_position: Vector3) -> void:
 	if _dead:
 		return
 	health = maxf(0.0, health - damage)
+	_update_health_bar()
 	_knockback_velocity += Vector3(knockback.x, 0.0, knockback.z) * 0.16
 	_body_material.albedo_color = Color(0.82, 0.32, 0.22)
 	var flash := create_tween()
@@ -108,6 +122,7 @@ func _die() -> void:
 	if _dead:
 		return
 	_dead = true
+	if is_instance_valid(_health_bar): _health_bar.hide()
 	velocity = Vector3.ZERO
 	_telegraph.visible = false
 	collision_layer = 0
@@ -215,3 +230,39 @@ func _material(color: Color, roughness: float) -> StandardMaterial3D:
 	material.roughness = roughness
 	material.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 	return material
+
+
+func _build_health_bar() -> void:
+	if _health_texture == null:
+		var image := Image.create(64, 10, false, Image.FORMAT_RGBA8)
+		image.fill(Color.WHITE)
+		_health_texture = ImageTexture.create_from_image(image)
+	_health_bar = Node3D.new()
+	_health_bar.name = "HealthBar"
+	_health_bar.position.y = 2.95
+	add_child(_health_bar)
+	var background := Sprite3D.new()
+	background.texture = _health_texture
+	background.pixel_size = 0.020
+	background.no_depth_test = true
+	background.render_priority = 18
+	background.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	background.modulate = Color(0.06, 0.025, 0.025)
+	_health_bar.add_child(background)
+	_health_fill = Sprite3D.new()
+	_health_fill.texture = _health_texture
+	_health_fill.pixel_size = 0.018
+	_health_fill.no_depth_test = true
+	_health_fill.render_priority = 19
+	_health_fill.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_health_fill.position.z = 0.015
+	_health_fill.modulate = Color(0.9, 0.22, 0.16)
+	_health_bar.add_child(_health_fill)
+	_update_health_bar()
+
+func _update_health_bar() -> void:
+	if not is_instance_valid(_health_fill): return
+	var ratio := clampf(health / maxf(1.0, max_health), 0.0, 1.0)
+	_health_fill.scale.x = maxf(0.001, ratio)
+	_health_fill.position.x = -0.576 * (1.0 - ratio)
+	_health_bar.visible = ratio > 0.0

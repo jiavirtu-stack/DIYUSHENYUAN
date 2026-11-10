@@ -7,6 +7,8 @@ func _initialize() -> void:
 
 func _run() -> void:
 	chapter = load("res://scenes/chapter01/revoked_day.tscn").instantiate()
+	chapter.rogue_enabled = false
+	chapter.combat_only = false
 	root.add_child(chapter)
 	await process_frame
 	chapter.hud.close_dialog()

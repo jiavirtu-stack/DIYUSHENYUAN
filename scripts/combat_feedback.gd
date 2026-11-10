@@ -30,7 +30,8 @@ func register_hit(target: Node3D, damage: float, at: Vector3, direction: Vector3
 	var arena := get_parent()
 	if arena.has_method("set_camera_shake"):
 		arena.call("set_camera_shake", 0.12 if heavy else 0.065)
-	_trigger_hit_stop(0.075 if heavy else 0.048)
+	# Melee freezes the attacker and struck actors locally in player._query_attack_hits.
+	# Other enemies, skill cooldowns and the camera keep their normal cadence.
 
 
 func register_ability_hit(target: Node3D, damage: float, at: Vector3, _direction: Vector3) -> void:
@@ -45,7 +46,7 @@ func register_ability_hit(target: Node3D, damage: float, at: Vector3, _direction
 
 
 func _spawn_sound(stream: AudioStream, at: Vector3, volume_db: float) -> void:
-	if stream == null:
+	if stream == null or DisplayServer.get_name() == "headless":
 		return
 	var player := AudioStreamPlayer3D.new()
 	player.stream = stream
@@ -183,3 +184,87 @@ func _auto_free(node: Node, seconds: float) -> void:
 	await get_tree().create_timer(seconds, true, false, true).timeout
 	if is_instance_valid(node):
 		node.queue_free()
+
+
+# Rule prototype uses one feedback gate per real-time interval, never per DOT tick.
+var _rule_next_ms := 0
+var _rule_low: AudioStreamWAV
+var _rule_mid: AudioStreamWAV
+var _rule_high: AudioStreamWAV
+
+func rule_impact(target: Node3D, at: Vector3, direction: Vector3, heavy: bool) -> void:
+	if is_instance_valid(target) and not target.is_in_group("card_boss") and target is CharacterBody3D:
+		var current: Vector3 = target.get("_knockback_velocity")
+		target.set("_knockback_velocity", current + direction * (4.5 if heavy else 2.2))
+		var body: Node3D = target.get("_visual_root").get_child(0)
+		var old: Variant = body.get_meta("rule_tween") if body.has_meta("rule_tween") else null
+		if old is Tween and old.is_valid(): old.kill()
+		body.scale = Vector3(1.22, 0.78, 1.12) if heavy else Vector3(1.1, 0.9, 1.05)
+		var squash := create_tween()
+		body.set_meta("rule_tween", squash)
+		squash.tween_property(body, "scale", Vector3.ONE, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		var material: StandardMaterial3D = target.get("_body_material")
+		material.albedo_color = Color.WHITE
+	var now := Time.get_ticks_msec()
+	if now < _rule_next_ms: return
+	_rule_next_ms = now + (110 if heavy else 65)
+	var sparks_before := get_child_count()
+	_spawn_hit_particles(at, heavy)
+	if get_child_count() > sparks_before:
+		var sparks := get_child(get_child_count() - 1) as GPUParticles3D
+		if sparks != null:
+			var process := sparks.process_material as ParticleProcessMaterial
+			process.direction = (direction + Vector3.UP * 0.3).normalized()
+			process.spread = 28.0 if heavy else 20.0
+	if _rule_low == null:
+		_rule_low = _impact_tone(72, 0.15, 0.12)
+		_rule_mid = _impact_tone(360, 0.10, 0.55)
+		_rule_high = _impact_tone(2100, 0.045, 0.8)
+	_spawn_sound(_rule_low, at, -9.0 if heavy else -18.0)
+	_spawn_sound(_rule_mid, at, -12.0 if heavy else -17.0)
+	_spawn_sound(_rule_high, at, -17.0 if heavy else -21.0)
+	get_parent().set_camera_shake(0.10 if heavy else 0.035)
+	_trigger_hit_stop(0.045 if heavy else 0.018)
+	if heavy and DisplayServer.get_name() != "headless":
+		_local_impact_frame(at)
+
+func _impact_tone(frequency: float, duration: float, grit: float) -> AudioStreamWAV:
+	var stream := AudioStreamWAV.new()
+	stream.format = AudioStreamWAV.FORMAT_16_BITS
+	stream.mix_rate = 22050
+	var samples := int(duration * stream.mix_rate)
+	var data := PackedByteArray()
+	data.resize(samples * 2)
+	var random := RandomNumberGenerator.new()
+	random.seed = int(frequency)
+	for i in range(samples):
+		var t := float(i) / stream.mix_rate
+		var envelope := exp(-t / duration * 7.0) * minf(t * 1600.0, 1.0)
+		var sample := (sin(TAU * frequency * t * (1.0 - t * 1.8)) * (1.0 - grit) + random.randf_range(-1, 1) * grit) * envelope
+		data.encode_s16(i * 2, int(clampf(sample, -1, 1) * 26000))
+	stream.data = data
+	return stream
+
+func _local_impact_frame(at: Vector3) -> void:
+	var camera := get_viewport().get_camera_3d()
+	if camera == null: return
+	var layer := CanvasLayer.new()
+	layer.layer = 8
+	var rect := ColorRect.new()
+	rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var material := ShaderMaterial.new()
+	material.shader = load("res://shaders/impact_local.gdshader")
+	var size := get_viewport().get_visible_rect().size
+	material.set_shader_parameter("viewport_size", size)
+	material.set_shader_parameter("center", camera.unproject_position(at) / size)
+	rect.material = material
+	layer.add_child(rect)
+	add_child(layer)
+	await RenderingServer.frame_post_draw
+	await get_tree().process_frame
+	if is_instance_valid(layer): layer.queue_free()
+
+func _exit_tree() -> void:
+	if _hit_stop_running:
+		Engine.time_scale = 1.0

@@ -38,6 +38,14 @@ func _ready() -> void:
 	practice.flat = true
 	practice.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/chapter01/card_practice.tscn"))
 	add_child(practice)
+	var rule_lab := Button.new()
+	rule_lab.text = "规则实验室 · 叠加与群怪"
+	rule_lab.position = Vector2(1510, 950)
+	rule_lab.size = Vector2(350, 42)
+	rule_lab.add_theme_font_size_override("font_size", 20)
+	rule_lab.flat = true
+	rule_lab.pressed.connect(func(): get_tree().change_scene_to_file("res://scenes/chapter01/beam_rule_lab.tscn"))
+	add_child(rule_lab)
 	_entries = [start_button, settings_button, exit_button]
 	var font := SystemFont.new()
 	font.font_names = PackedStringArray(["SimHei", "Microsoft YaHei"])

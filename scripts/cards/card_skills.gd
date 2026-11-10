@@ -3,12 +3,13 @@ extends Node3D
 signal cast_started(index: int)
 signal cast_denied(reason: String)
 
-const TITLES := ["雷贯光波", "余烬回信", "霜封档案", "追索火种", "逆风回廊"]
+const TITLES := ["雷贯光波", "余烬回信", "霜封档案", "暗影骷髅", "逆风回廊"]
 const COOLDOWNS := [6.0, 10.0, 12.0, 9.0, 14.0]
-const COLORS := [Color(0.48, 0.43, 1.0), Color(1.0, 0.29, 0.08), Color(0.42, 0.88, 1.0), Color(1.0, 0.66, 0.14), Color(0.35, 0.83, 0.70)]
+const COLORS := [Color(0.48, 0.43, 1.0), Color(1.0, 0.29, 0.08), Color(0.42, 0.88, 1.0), Color(0.55, 0.95, 0.70), Color(0.35, 0.83, 0.70)]
 const RANGES := [14.0, 9.0, 8.0, 6.0, 7.0]
 const GROUND_SHADER := preload("res://shaders/card_ground.gdshader")
 
+var rule_beam: Node3D
 var actor: FairytalePlayer
 var cooldowns := [0.0, 0.0, 0.0, 0.0, 0.0]
 var aim_index := -1
@@ -23,6 +24,8 @@ var _effects: Array[Dictionary] = []
 var _transients: Array[Dictionary] = []
 var _statuses: Dictionary = {}
 var _clock := 0.0
+var _charge_sheet: Node3D
+var _skull_texture: ImageTexture
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_PAUSABLE
@@ -43,16 +46,19 @@ func _physics_process(delta: float) -> void:
 			continue
 		effect.age += delta
 		match str(effect.kind):
+			"echo_beam":
+				if float(effect.age) >= 0.5:
+					_cast_beam(effect.center, effect.charge, 0.6, effect.origin)
 			"letter": _advance_letter(effect)
 			"fire", "frost", "wind": _advance_zone(effect, delta)
 			"embers": _advance_embers(effect, delta)
 		if _live(effect.node) and float(effect.age) >= float(effect.duration):
 			if effect.kind == "wind":
-				_hit_area(effect.center, 3.0, 12.0, "wind")
+				_hit_area(effect.center, 3.0, 24.0 if mutation(4) == 1 else 12.0, "wind")
 				for target in _nearby(effect.center, 3.0):
 					if target is CharacterBody3D:
 						var status := _status_for(target)
-						status.push_velocity = (target.global_position - (effect.center as Vector3)).normalized() * 4.0
+						status.push_velocity = (target.global_position - (effect.center as Vector3)).normalized() * (7.0 if mutation(4) == 1 else 4.0)
 						status.push_left = 0.2
 				_burst(effect.center, COLORS[4], 12)
 			_dispose(effect)
@@ -85,12 +91,24 @@ func begin_aim(index: int) -> bool:
 	_preview.name = "CardAimPreview"
 	add_child(_preview)
 	if index == 0:
+		_charge_sheet = load("res://scripts/cards/thunder_sheet_fx.gd").new()
+		_charge_sheet.charging = true
+		_preview.add_child(_charge_sheet)
 		_preview_line = _box(Vector3.ONE, Vector3.ZERO, COLORS[0], _preview)
+		if mutation(0) == 0:
+			for i in range(2):
+				_preview_arc.append(_box(Vector3.ONE, Vector3.ZERO, COLORS[0], _preview))
 	else:
-		var diameter: float = [0.0, 4.8, 5.0, 2.6, 6.0][index]
+		var diameter: float = [0.0, 6.48 if mutation(1) == 1 else 4.8, 3.0 if mutation(2) == 0 else 5.0, 2.6, 6.0][index]
 		_preview_area = _ground(Vector3.ZERO, diameter, COLORS[index], 1.0 if index == 2 else (2.0 if index == 4 else 0.0), true)
 		remove_child(_preview_area)
 		_preview.add_child(_preview_area)
+		if index == 2 and mutation(2) == 0:
+			for i in range(2):
+				var tile := _ground(Vector3.ZERO, 3.0, COLORS[2], 1.0, true)
+				remove_child(tile)
+				_preview.add_child(tile)
+				_preview_arc.append(tile)
 		if index == 1:
 			for i in range(8):
 				_preview_arc.append(_box(Vector3.ONE, Vector3.ZERO, COLORS[1], _preview))
@@ -120,7 +138,22 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		cancel_aim()
 
+func mutation(index: int) -> int:
+	var run: Node = get_parent().get("rogue")
+	return int(run.mutations[index]) if run != null else -1
+
+func cooldown_duration(index: int) -> float:
+	if is_instance_valid(rule_beam) and index == 0:
+		return 0.65
+	var run: Node = get_parent().get("rogue")
+	return float(COOLDOWNS[index]) * (float(run.cooldown_scale) if run != null else 1.0)
+
 func _can_cast(index: int) -> bool:
+	if is_instance_valid(rule_beam) and index != 0:
+		return false
+	var run: Node = get_parent().get("rogue")
+	if run != null and (index < 0 or index >= 5 or not run.enabled[index]):
+		return false
 	return index >= 0 and index < 5 and not get_tree().paused and actor.health > 0.0 and not bool(get_parent().get("won")) and float(cooldowns[index]) <= 0.0 and _recovery <= 0.0
 
 func cast_at(index: int, requested: Vector3, charge: float = 0.0) -> bool:
@@ -134,15 +167,31 @@ func cast_at(index: int, requested: Vector3, charge: float = 0.0) -> bool:
 	if index != 0 and index != 3 and actor.position.distance_to(at) < 0.45 and not _clear(actor.position, requested):
 		cast_denied.emit("落点被墙体阻挡")
 		return false
-	cooldowns[index] = float(COOLDOWNS[index])
+	cooldowns[index] = cooldown_duration(index)
 	_recovery = 0.25
 	actor.set_facing_direction((at - actor.position).normalized())
 	match index:
-		0: _cast_beam(requested, clampf(charge, 0.0, 1.0))
+		0:
+			if is_instance_valid(rule_beam):
+				rule_beam.cast(requested, charge)
+			elif mutation(0) == 0:
+				var direction := requested - actor.position
+				for angle in [-0.18, 0.0, 0.18]:
+					_cast_beam(actor.position + direction.rotated(Vector3.UP, angle), charge, 0.65)
+			else:
+				_cast_beam(requested, charge)
+				if mutation(0) == 1 and charge >= 0.95:
+					var marker := Node3D.new()
+					add_child(marker)
+					_effects.append({"kind":"echo_beam", "node":marker, "age":0.0, "duration":0.5, "center":requested, "origin":actor.position, "charge":charge})
 		1: _cast_letter(at)
 		2: _cast_frost(at)
 		3: _cast_embers(requested)
 		4: _cast_wind(at)
+	var casting_circle: Node3D = load("res://scripts/cards/magic_circle_cast.gd").new()
+	casting_circle.tint = COLORS[index]
+	casting_circle.position = actor.position + Vector3.UP * 0.045
+	add_child(casting_circle)
 	_play_sound(index)
 	cast_started.emit(index)
 	return true
@@ -171,12 +220,26 @@ func _valid_ground(at: Vector3) -> bool:
 func _update_preview() -> void:
 	if not _live(_preview):
 		return
+	if aim_index == 0 and is_instance_valid(_charge_sheet):
+		_charge_sheet.position = actor.position + Vector3.UP * 0.70
+		_charge_sheet.surface.scale = Vector3.ONE * lerpf(0.65, 1.3, minf(aim_age, 1.0))
+	if is_instance_valid(rule_beam) and aim_index == 0:
+		rule_beam.preview(aim_point)
+		return
 	var at := _limited_point(aim_point, float(RANGES[aim_index]))
 	if aim_index == 0:
 		var direction := (aim_point - actor.position).normalized()
 		var end := _limited_point(actor.position + direction * 14.0, 14.0)
 		_position_line(_preview_line, actor.position + Vector3.UP * 0.06, end + Vector3.UP * 0.06, lerpf(0.45, 0.9, minf(aim_age, 1.0)))
+		for i in range(_preview_arc.size()):
+			var side := direction.rotated(Vector3.UP, -0.18 if i == 0 else 0.18)
+			var side_end := _limited_point(actor.position + side * 14.0, 14.0)
+			_position_line(_preview_arc[i], actor.position + Vector3.UP * 0.06, side_end + Vector3.UP * 0.06, lerpf(0.45, 0.9, minf(aim_age, 1.0)))
 	else:
+		if aim_index == 2 and mutation(2) == 0:
+			var direction := (at - actor.position).normalized()
+			for i in range(_preview_arc.size()):
+				_preview_arc[i].position = _limited_point(at + direction * (-2.5 if i == 0 else 2.5), 10.0) + Vector3.UP * 0.04
 		if aim_index == 3:
 			at = actor.position
 		_preview_area.position = Vector3(at.x, 0.08, at.z)
@@ -196,11 +259,13 @@ func _position_line(node: MeshInstance3D, from: Vector3, to: Vector3, width: flo
 	if from.distance_squared_to(to) > 0.001:
 		node.look_at(to, Vector3.UP)
 
-func _cast_beam(requested: Vector3, charge: float) -> void:
-	var direction := Vector3(requested.x - actor.position.x, 0, requested.z - actor.position.z).normalized()
+func _cast_beam(requested: Vector3, charge: float, factor: float = 1.0, origin: Vector3 = Vector3.INF) -> void:
+	if origin == Vector3.INF:
+		origin = actor.position
+	var direction := Vector3(requested.x - origin.x, 0, requested.z - origin.z).normalized()
 	if direction.length_squared() < 0.01:
 		direction = Vector3(0, 0, -1)
-	var start := actor.position + Vector3.UP * 0.65
+	var start := origin + Vector3.UP * 0.65
 	var end := start + direction * 14.0
 	var solid := _solid_ray(start, end)
 	if not solid.is_empty():
@@ -221,17 +286,15 @@ func _cast_beam(requested: Vector3, charge: float) -> void:
 	for target in targets:
 		if not _valid_target(target):
 			continue
-		_hit(target, lerpf(18.0, 36.0, charge), "thunder")
+		_hit(target, lerpf(18.0, 36.0, charge) * factor, "thunder")
 		if _live(target) and target.is_in_group("card_paper") and target.collision_layer & 2:
 			end = start + direction * minf(start.distance_to(end), start.distance_to(target.global_position))
 			break
-	var beam := _line(start, end, lerpf(0.12, 0.27, charge), COLORS[0])
-	_transient(beam, 0.28)
-	_transient(_line(start, end, 0.055, Color(0.86, 0.9, 1)), 0.16)
-	for i in range(5):
-		var at := start.lerp(end, (i + 0.3) / 5.0)
-		var side := Vector3(direction.z, 0, -direction.x) * (0.3 if i % 2 == 0 else -0.3)
-		_transient(_line(at, at + direction * 0.8 + side, 0.035, COLORS[0]), 0.25)
+	var visual: Node3D = load("res://scripts/cards/thunder_sheet_fx.gd").new()
+	add_child(visual)
+	visual.span(start, end, lerpf(2.2, 4.0, charge))
+	# Register with the existing cleanup pool; the sheet never changes the hit query.
+	_transient(visual, 0.36)
 
 func _cast_letter(at: Vector3) -> void:
 	var node := Node3D.new()
@@ -247,10 +310,25 @@ func _advance_letter(effect: Dictionary) -> void:
 	if t >= 1.0:
 		_hit_area(effect.center, 2.4, 18.0, "fire")
 		_burst(effect.center, COLORS[1], 16)
-		_add_zone("fire", effect.center, 4.8, 3.0, COLORS[1], 0.0)
+		if mutation(1) == 0:
+			for i in range(3):
+				var offset := Vector3(cos(i * TAU / 3), 0, sin(i * TAU / 3)) * 2.0
+				var point: Vector3 = effect.center + offset
+				if _valid_ground(point) and _clear(effect.center, point):
+					_hit_area(point, 1.0, 7.0, "fire")
+					_transient(_ground(point, 2.0, COLORS[1], 0), 0.4)
+		_add_zone("fire", effect.center, 6.48 if mutation(1) == 1 else 4.8, 5.0 if mutation(1) == 1 else 3.0, COLORS[1], 0.0)
 		_dispose(effect)
 
 func _cast_frost(at: Vector3) -> void:
+	if mutation(2) == 0:
+		var direction := (at - actor.position).normalized()
+		for i in range(3):
+			var point := _limited_point(at + direction * (i - 1) * 2.5, 10.0)
+			if _valid_ground(point):
+				_hit_area(point, 1.5, 4.0, "ice", true)
+				_add_zone("frost", point, 3.0, 4.0, COLORS[2], 1.0)
+		return
 	_hit_area(at, 2.5, 6.0, "ice", true)
 	_add_zone("frost", at, 5.0, 4.0, COLORS[2], 1.0)
 	_burst(at, COLORS[2], 10)
@@ -260,11 +338,16 @@ func _cast_wind(at: Vector3) -> void:
 
 func _add_zone(kind: String, at: Vector3, size: float, duration: float, color: Color, style: float) -> void:
 	var node := _ground(at, size, color, style)
-	_effects.append({"kind":kind, "node":node, "center":at, "age":0.0, "duration":duration, "next_tick":0.6 if kind == "wind" else 1.0, "dwell":{}, "frozen":{}, "ribbon":0.0})
+	_effects.append({"kind":kind, "node":node, "center":at, "age":0.0, "duration":duration, "next_tick":0.6 if kind == "wind" else 1.0, "dwell":{}, "frozen":{}, "ribbon":0.0, "radius":size * 0.5, "direction":(at - actor.position).normalized()})
 
 func _advance_zone(effect: Dictionary, delta: float) -> void:
 	(effect.node.material_override as ShaderMaterial).set_shader_parameter("age", float(effect.age))
-	var radius := 2.5 if effect.kind == "frost" else (3.0 if effect.kind == "wind" else 2.4)
+	if effect.kind == "wind" and mutation(4) == 0:
+		var point: Vector3 = effect.center + effect.direction * delta * 1.4
+		if _valid_ground(point) and _clear(effect.center, point):
+			effect.center = point
+			effect.node.position = point + Vector3.UP * 0.04
+	var radius: float = effect.radius
 	var inside := _nearby(effect.center, radius, effect.kind == "frost")
 	var seen: Dictionary = {}
 	for target in inside:
@@ -307,12 +390,11 @@ func _cast_embers(at: Vector3) -> void:
 	var root := Node3D.new()
 	add_child(root)
 	var birds: Array[Dictionary] = []
-	for i in range(3):
+	for i in range(5 if mutation(3) == 0 else 3):
 		var bird := Node3D.new()
 		root.add_child(bird)
-		_box(Vector3(0.26, 0.14, 0.45), Vector3.ZERO, COLORS[3], bird)
-		_box(Vector3(0.65, 0.035, 0.17), Vector3(0, 0, 0.04), Color(1, 0.42, 0.1), bird)
-		birds.append({"node":bird, "target":null, "launched":false, "done":false, "flight":0.0, "retargeted":false})
+		_build_skull(bird)
+		birds.append({"node":bird, "target":null, "launched":false, "done":false, "flight":0.0, "retargeted":false, "damage":8.0 if mutation(3) == 0 else 10.0, "wait_boost":false, "trail":0.0})
 	_effects.append({"kind":"embers", "node":root, "age":0.0, "duration":5.0, "center":at, "birds":birds, "next_launch":0.0})
 
 func _advance_embers(effect: Dictionary, delta: float) -> void:
@@ -323,11 +405,17 @@ func _advance_embers(effect: Dictionary, delta: float) -> void:
 			continue
 		remaining += 1
 		var node: Node3D = bird.node
+		bird.trail += delta
+		if float(bird.trail) >= 0.055:
+			bird.trail = 0.0
+			var mote := _box(Vector3(0.13, 0.13, 0.13), node.global_position, Color(0.45, 0.20, 0.7, 0.6))
+			_transient(mote, 0.35, Vector3(0, 0.25, 0))
 		if not bird.launched:
 			node.global_position = actor.global_position + Vector3(cos(_clock * 2.5 + i * TAU / 3.0) * 1.0, 1.0, sin(_clock * 2.5 + i * TAU / 3.0) * 1.0)
 			if float(effect.age) >= float(effect.next_launch):
 				var target := _ember_target(effect.center)
 				if target != null:
+					bird.wait_boost = mutation(3) == 1 and float(effect.age) >= 1.0
 					bird.target = weakref(target)
 					bird.launched = true
 					effect.next_launch = float(effect.age) + 0.22
@@ -349,7 +437,7 @@ func _advance_embers(effect: Dictionary, delta: float) -> void:
 		var hit := get_world_3d().direct_space_state.intersect_ray(query)
 		if not hit.is_empty() or next.distance_to(goal) < 0.28:
 			var victim: Node3D = hit.collider as Node3D if not hit.is_empty() else target
-			_hit(victim, 10.0, "fire")
+			_hit(victim, float(bird.damage) * (1.5 if bird.wait_boost else 1.0), "fire")
 			_burst(next, COLORS[3], 5)
 			bird.done = true
 			node.queue_free()
@@ -394,6 +482,9 @@ func _hit(target: Node3D, amount: float, element: String) -> void:
 	if not _valid_target(target) or bool(get_parent().get("won")):
 		return
 	var status := _status_for(target)
+	var was_frozen: bool = float(status.freeze_left) > 0.0
+	var run: Node = get_parent().get("rogue")
+	amount *= float(run.damage_scale) if run != null else 1.0
 	var bonus := 0.0
 	if float(status.reaction_lock) <= 0.0:
 		if element == "fire" and float(status.ice) > 0.0:
@@ -411,6 +502,12 @@ func _hit(target: Node3D, amount: float, element: String) -> void:
 		status[element] = 3.0
 	var position_before := target.global_position
 	target.call("receive_hit", amount + bonus, Vector3.ZERO, position_before + Vector3.UP * 0.6)
+	if was_frozen and mutation(2) == 1 and (not _valid_target(target) or float(target.get("health")) <= 0.0):
+		status.freeze_left = 0.0
+		_burst(position_before, COLORS[2], 18)
+		for other in _nearby(position_before, 2.5):
+			if other != target:
+				_hit(other, 10.0, "ice")
 	var feedback := get_parent().get_node_or_null("CombatFeedback")
 	if feedback != null:
 		feedback.call("_spawn_damage_number", amount + bonus, position_before + Vector3.UP * 0.6)
@@ -481,6 +578,8 @@ func _solid_ray(from: Vector3, to: Vector3) -> Dictionary:
 	return get_world_3d().direct_space_state.intersect_ray(query)
 
 func clear_effects() -> void:
+	if is_instance_valid(rule_beam):
+		rule_beam.clear()
 	cancel_aim()
 	for status in _statuses.values():
 		var target: Node = status.target.get_ref()
@@ -564,3 +663,31 @@ func _play_sound(index: int) -> void:
 	add_child(sound)
 	sound.finished.connect(sound.queue_free)
 	sound.play()
+
+
+func _build_skull(parent: Node3D) -> void:
+	if _skull_texture == null:
+		var pattern := ["................", ".....oooooo.....", "...oobbbbbboo...", "..obbbbbbbbbbo..", ".obbbbbbbbbbbbo.", ".obbeebbbeeebbo.", ".obbeebbbeeebbo.", ".obbbbbbbbbbbbo.", "..obbbnnbbbbbo..", "...obbbbbbbbo...", "....obbbbbo.....", "....obobobo.....", ".....ooooo......", "................", "................", "................"]
+		var palette := {"o":Color(0.19, 0.08, 0.31), "b":Color(0.81, 0.87, 0.76), "e":Color(0.35, 1.0, 0.60), "n":Color(0.12, 0.08, 0.2)}
+		var pixels := Image.create(16, 16, false, Image.FORMAT_RGBA8)
+		pixels.fill(Color.TRANSPARENT)
+		for y in range(16):
+			for x in range(16):
+				var key: String = pattern[y][x]
+				if palette.has(key): pixels.set_pixel(x, y, palette[key])
+		_skull_texture = ImageTexture.create_from_image(pixels)
+	var halo := Sprite3D.new()
+	halo.texture = _skull_texture
+	halo.pixel_size = 0.062
+	halo.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	halo.modulate = Color(0.5, 0.2, 0.85, 0.3)
+	halo.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	parent.add_child(halo)
+	var skull := Sprite3D.new()
+	skull.name = "NecroSkull"
+	skull.texture = _skull_texture
+	skull.pixel_size = 0.047
+	skull.position.z = 0.02
+	skull.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	skull.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	parent.add_child(skull)

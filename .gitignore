@@ -29,3 +29,7 @@ docs/boss_motion_preview*
 docs/boss_motion2_preview*
 docs/boss_final_preview*
 docs/boss_motion10_preview*
+
+# Local source library and duplicate empty project; runtime assets are in assets/.
+/提供的素材/
+/新建游戏项目/

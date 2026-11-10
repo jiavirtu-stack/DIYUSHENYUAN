@@ -17,6 +17,8 @@ const ATTACK_DATA_PATHS := ["res://resources/attacks/light_1.tres", "res://resou
 @export_range(5.0, 14.0, 0.1) var dodge_speed := 9.2
 @export var max_health := 100.0
 @export var external_pause_control := false
+@export var melee_speed_multiplier := 1.0
+@export var melee_range_multiplier := 1.0
 @export_range(1.0, 100.0, 1.0) var beam_damage := 34.0
 @export_range(4.0, 24.0, 0.5) var beam_range := 18.0
 
@@ -36,6 +38,9 @@ var _arena: Node
 var _attack_data: Array[AttackData] = []
 var _attack_stage := -1
 var _attack_elapsed := 0.0
+var _hit_pause_left := 0.0
+var _hit_pause_speed := 1.0
+var _melee_pause_used := false
 var _attack_hit_targets: Dictionary = {}
 var _combo_buffered := false
 var _attack_direction := Vector3(0.0, 0.0, 1.0)
@@ -80,6 +85,15 @@ func _ready() -> void:
 		var attack := (load(path) as AttackData).duplicate(true) as AttackData
 		if selected_buff == 0:
 			attack.damage *= 1.2
+		var speed := maxf(0.1, melee_speed_multiplier)
+		attack.windup /= speed
+		attack.active_duration /= speed
+		attack.recovery /= speed
+		attack.combo_buffer_open /= speed
+		attack.combo_buffer_close /= speed
+		attack.dodge_cancel_open /= speed
+		attack.reach *= melee_range_multiplier
+		attack.hit_radius *= melee_range_multiplier
 		_attack_data.append(attack)
 	_play_directional("idle", _facing)
 	_update_camera_target()
@@ -88,16 +102,28 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if _dead:
 		return
-	_dodge_timer = maxf(0.0, _dodge_timer - delta)
-	_dodge_cooldown_timer = maxf(0.0, _dodge_cooldown_timer - delta)
-	_invulnerability_timer = maxf(0.0, _invulnerability_timer - delta)
-	if _attack_stage >= 0:
-		_update_attack(delta)
 	if Input.is_action_just_pressed("pause") and not external_pause_control:
 		get_tree().paused = not get_tree().paused
 	if get_tree().paused:
 		velocity = Vector3.ZERO
 		return
+	if _hit_pause_left > 0.0:
+		_hit_pause_left = maxf(0.0, _hit_pause_left - delta)
+		velocity = Vector3.ZERO
+		if Input.is_action_just_pressed("attack") and _attack_stage >= 0 and _attack_stage < 2:
+			_combo_buffered = true
+		if _hit_pause_left <= 0.0:
+			sprite.speed_scale = _hit_pause_speed
+		return
+	_dodge_timer = maxf(0.0, _dodge_timer - delta)
+	_dodge_cooldown_timer = maxf(0.0, _dodge_cooldown_timer - delta)
+	_invulnerability_timer = maxf(0.0, _invulnerability_timer - delta)
+	if _attack_stage >= 0:
+		_update_attack(delta)
+		if _hit_pause_left > 0.0:
+			velocity = Vector3.ZERO
+			return
+
 	var input_vector := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	var move_direction := Vector3(input_vector.x, 0.0, input_vector.y)
 	if move_direction.length_squared() > 0.001:
@@ -113,7 +139,7 @@ func _physics_process(delta: float) -> void:
 			_begin_attack()
 		elif _attack_stage >= 0 and _attack_stage < 2:
 			var data := _attack_data[_attack_stage]
-			if _attack_elapsed >= data.combo_buffer_open and _attack_elapsed <= data.total_duration() - data.combo_buffer_close:
+			if _attack_elapsed >= data.combo_buffer_open and _attack_elapsed <= data.combo_buffer_close:
 				_combo_buffered = true
 	if _dodge_timer > 0.0:
 		velocity.x = _dodge_direction.x * dodge_speed
@@ -132,7 +158,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _process(_delta: float) -> void:
-	if not _beam_charging or get_tree().paused:
+	if not _beam_charging or get_tree().paused or _hit_pause_left > 0.0:
 		return
 	var aim_direction := _get_mouse_aim_direction()
 	if aim_direction.length_squared() > 0.001:
@@ -284,6 +310,7 @@ func _start_attack(stage: int) -> void:
 	_attack_stage = stage
 	_attack_elapsed = 0.0
 	_attack_hit_targets.clear()
+	_melee_pause_used = false
 	_combo_buffered = false
 	_attack_direction = _facing.normalized()
 	_attack_locked = true
@@ -332,11 +359,27 @@ func _query_attack_hits(data: AttackData) -> void:
 			var direction := Vector3(_attack_direction.x, 0.0, _attack_direction.z).normalized()
 			var hit_at: Vector3 = (target as Node3D).global_position + Vector3.UP * 0.55
 			target.call("receive_hit", data.damage, direction * data.knockback, hit_at)
+			var pause_duration := 0.083 if _attack_stage == 2 else 0.05
+			_begin_melee_hit_pause(pause_duration)
+			if target.has_method("begin_hit_pause"):
+				target.call("begin_hit_pause", pause_duration)
 			if _feedback != null:
 				_feedback.register_hit(target as Node3D, data.damage, hit_at, direction, _attack_stage == 2)
 
 
+func _begin_melee_hit_pause(duration: float) -> void:
+	# One attacker pause per swing, regardless of how many enemies the sweep hits.
+	if _melee_pause_used or _dead:
+		return
+	_melee_pause_used = true
+	_hit_pause_left = duration
+	_hit_pause_speed = sprite.speed_scale
+	sprite.speed_scale = 0.0
+
+
 func _cancel_attack() -> void:
+	_hit_pause_left = 0.0
+	sprite.speed_scale = _hit_pause_speed
 	_attack_stage = -1
 	_attack_elapsed = 0.0
 	_combo_buffered = false
@@ -346,6 +389,7 @@ func _cancel_attack() -> void:
 func apply_hit(damage: float, knockback: Vector3 = Vector3.ZERO) -> void:
 	if is_invulnerable or _dead:
 		return
+	_cancel_attack()
 	health = maxf(0.0, health - damage)
 	health_changed.emit(health, max_health)
 	velocity += knockback
@@ -358,6 +402,7 @@ func apply_hit(damage: float, knockback: Vector3 = Vector3.ZERO) -> void:
 
 
 func die() -> void:
+	_cancel_attack()
 	_dead = true
 	velocity = Vector3.ZERO
 	_attack_locked = true

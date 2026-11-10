@@ -13,7 +13,6 @@ func _run() -> void:
 		await physics_frame
 		await physics_frame
 		chapter.hud.set("_selected", i)
-		chapter.hud.set("_locked", i)
 		assert(chapter.skills.cast_at(i, Vector3(0, 0, 1.5), 1.0))
 		await create_timer([0.04, 0.65, 1.75, 0.1, 0.9][i], true, false, true).timeout
 		await RenderingServer.frame_post_draw
@@ -22,7 +21,6 @@ func _run() -> void:
 	await physics_frame
 	await physics_frame
 	chapter.hud.set("_selected", 1)
-	chapter.hud.set("_locked", 1)
 	assert(chapter.skills.begin_aim(1))
 	chapter.skills.set_physics_process(false)
 	chapter.skills.aim_point = Vector3(0, 0, 1.5)

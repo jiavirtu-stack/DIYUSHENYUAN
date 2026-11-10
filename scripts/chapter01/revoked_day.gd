@@ -10,6 +10,18 @@ const PAINTED_MAP := preload("res://scripts/chapter01/painted_map.gd")
 const SKILLS := preload("res://scripts/cards/card_skills.gd")
 
 @export var card_practice := false
+@export var rogue_enabled := true
+@export var combat_only := true
+var _fast_blade: MeshInstance3D
+var battle_wave := 0
+var battle_wave_limit := 5
+var _battle_transition_pending := false
+var _batch_queue: Array[Dictionary] = []
+var _batch_alive := 0
+var _batch_number := 0
+var _batch_total := 0
+var _batch_pending := false
+var rogue: Node
 
 const EVIDENCE := [
 	["迟交记录", "[可核对 · 提交系统]\n两次报告晚于约定时间，其中一份存在遗漏。记录说明任务完成遇到了困难；它没有记录一个人的价值。"],
@@ -86,12 +98,18 @@ func _ready() -> void:
 	player = PLAYER.instantiate() as FairytalePlayer
 	player.name = "Player"
 	player.external_pause_control = true
+	player.melee_speed_multiplier = 2.0
+	player.melee_range_multiplier = 1.35
 	add_child(player)
 	player.process_mode = Node.PROCESS_MODE_PAUSABLE
 	player.get_node("Visual").scale = Vector3.ONE * 1.25
+	_fast_blade = _box("FastKnife", Vector3(0.10, 0.035, 0.65), Vector3(0.4, 0.85, 0), Color(0.85, 0.92, 1), false, player)
 	skills = SKILLS.new()
 	skills.name = "CardSkills"
 	add_child(skills)
+	if rogue_enabled and not card_practice:
+		rogue = load("res://scripts/rogue/chapter_run.gd").new()
+		add_child(rogue)
 	hud = CanvasLayer.new()
 	hud.name = "ChapterHUD"
 	hud.set_script(HUD)
@@ -99,10 +117,19 @@ func _ready() -> void:
 	if card_practice:
 		_load_stage(2)
 		reset_practice()
-		hud.call("dialog", "五卡练习", "五张卡均已装备，冷却分别为 6 / 10 / 12 / 9 / 14 秒。\n\n滚轮选牌 → 中键单击锁定 → 再按住瞄准、松开施放。右键解除锁定。\n练习中不会受到伤害；右上角可重置目标和冷却。", ["开始练习"], [Callable()])
+		hud.call("dialog", "五卡练习", "五张卡均已装备，冷却分别为 6 / 10 / 12 / 9 / 14 秒。\n\n滚轮选牌 → 按住中键瞄准 → 松开施放。随时可滚轮换牌。\n练习中不会受到伤害；右上角可重置目标和冷却。", ["开始练习"], [Callable()])
 		return
 	_load_stage(0)
-	hud.call("dialog", "第一关 · 被撤销的一天", "我回到了被清空的工位前。\n墙上的日期没有变化。先把发生过的事，与脑海里反复出现的结论分开。\n\n靠近方框资料按 E 查看；Tab 随时打开调查记录。\nWASD 移动，左键攻击，Shift / Space 闪避。", ["开始调查"], [Callable()])
+	if rogue != null:
+		# Spawn on the central open floor, below the artwork's solid desk footprint.
+		player.position = _at(Vector2(768, 565))
+		_last_player_position = player.position
+		set_camera_target(player.position)
+		_camera_focus = _wanted_focus
+		_update_camera(1.0)
+		rogue.start()
+	else:
+		hud.call("dialog", "第一关 · 被撤销的一天", "靠近方框资料按 E 查看；Tab 打开调查记录。", ["开始调查"], [Callable()])
 
 func _load_stage(next: int) -> void:
 	_changing = true
@@ -121,7 +148,8 @@ func _load_stage(next: int) -> void:
 	_half = Vector2(24, 19.532)
 	_build_floor()
 	match stage:
-		0: _build_office()
+		0:
+			if not combat_only: _build_office()
 		1: _build_street()
 		2: _build_apartment()
 	player.position = _at([Vector2(625, 525), Vector2(750, 710), Vector2(770, 770)][stage])
@@ -156,6 +184,13 @@ func _physics_process(delta: float) -> void:
 			player.apply_hit(4.0)
 
 func _process(delta: float) -> void:
+	if is_instance_valid(_fast_blade):
+		var direction: Vector3 = player._attack_direction if player._attack_stage >= 0 else player._facing
+		var angle := atan2(direction.x, direction.z)
+		if player._attack_stage >= 0:
+			angle += sin(player._attack_elapsed / player._attack_data[player._attack_stage].total_duration() * PI) * 1.8 - 0.9
+		_fast_blade.rotation.y = angle
+		_fast_blade.position = Vector3(sin(angle) * 0.5, 0.85, cos(angle) * 0.5)
 	if is_instance_valid(camera):
 		_update_camera(delta)
 
@@ -189,6 +224,8 @@ func set_camera_shake(_strength: float) -> void:
 	pass
 
 func _unhandled_input(event: InputEvent) -> void:
+	if combat_only:
+		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_E:
 		if get_tree().paused or won or player.health <= 0.0:
 			return
@@ -215,8 +252,10 @@ func _nearest() -> Dictionary:
 	return result
 
 func get_interaction_hint() -> String:
+	if combat_only and not card_practice:
+		return "WASD移动 · 左键快速砍击 · 中键技能 · Shift / Space闪避 · Tab查看构筑"
 	if card_practice:
-		return "五卡练习 · 右键解除锁定后可换牌 · 冷却结束需重新按下施放"
+		return "五卡练习 · 滚轮随时换牌，中键按住瞄准、松开施放 · 冷却结束需重新按下施放"
 	if won:
 		return "已获得：因果记录卡"
 	var nearest := _nearest()
@@ -225,12 +264,20 @@ func get_interaction_hint() -> String:
 	return "WASD 移动 · E 查看 · Tab 调查记录 · 左键攻击 · Shift / Space 闪避"
 
 func get_hud_status() -> String:
+	if combat_only and not card_practice:
+		if won: return "战斗完成 · 五波清场与盖章者已击败"
+		if is_instance_valid(stamper): return "最终战 · 盖章者"
+		if _battle_transition_pending: return "下一波即将抵达"
+		if not wave_started: return "选择技能后开战 · 首波32只，分4批清场"
+		return "第%d / %d波 · 第%d / %d批 · 当前%d · 本波剩余%d" % [maxi(1, battle_wave), battle_wave_limit, _batch_number, _batch_total, _batch_alive, enemies_left]
 	if card_practice:
 		return "卡牌练习 · 五种技能 · 独立冷却 · 练习中免伤"
 	if stage == 0:
 		if wave_started and not office_fought:
-			return "办公室 · 清除结论残影 %d / 5" % (5 - enemies_left)
+			return "第一波 · 清除残影 %d / %d" % [int(get_meta("opening_wave_total", 5)) - enemies_left, int(get_meta("opening_wave_total", 5))]
 		return "办公室 · 资料 %d / 6 · %s" % [records.size(), "已清理，前往出口" if office_fought else "调查工位、会议室与档案"]
+	if stage == 1 and rogue != null:
+		return ("街道战斗 · 剩余 %d" % rogue.remaining) if rogue.in_combat else ("街道支路 %d / 4 · 零钱 %d · 前往出租屋入口选路" % [maxi(0, rogue.depth - 1), rogue.coins])
 	if stage == 1:
 		return "雨后街道 · 沿路查看信件，前往出租屋"
 	return "出租屋 · 账单 %d / 5 · %s" % [bills_done.size(), "盖章者已显形" if is_instance_valid(stamper) else "查看或攻击纸墙，释放场地"]
@@ -244,6 +291,8 @@ func notebook_text() -> String:
 	result += "\n经济记录（桌面原件，数字固定）\n"
 	for bill in BILLS:
 		result += "□ " + bill[0] + "：" + bill[1] + "\n"
+	if rogue != null:
+		result += "\n\n本局构筑\n" + rogue.summary()
 	return result
 
 func _build_floor() -> void:
@@ -288,6 +337,9 @@ func _belongings_found() -> void:
 
 func _office_exit() -> void:
 	if office_fought:
+		if rogue != null and rogue.pending_reward:
+			rogue.reward()
+			return
 		_load_stage(1)
 	elif wave_started:
 		hud.call("dialog", "出口被纸页封住", "先清除办公室的结论残影，再离开这里。", ["返回战斗"], [Callable()])
@@ -298,6 +350,10 @@ func _start_wave() -> void:
 	if wave_started:
 		return
 	wave_started = true
+	if rogue != null:
+		if combat_only: battle_wave = 1
+		_start_crowd_wave()
+		return
 	enemies_left = 5
 	for i in range(5):
 		var enemy := CharacterBody3D.new()
@@ -310,11 +366,99 @@ func _start_wave() -> void:
 		enemy.connect("defeated", _echo_defeated)
 		world.add_child(enemy)
 
+func _start_crowd_wave() -> void:
+	var pools := [[], [], [], []]
+	var center: Vector3 = _at(Vector2(768, 565)) if combat_only else player.position
+	# Navigation cells provide valid, collision-free spawn positions on all four sides.
+	for y in range(32):
+		for x in range(48):
+			var cell := Vector2i(x, y)
+			if _art.navigation.is_point_solid(cell): continue
+			var point: Vector3 = _at(_art.navigation.get_point_position(cell))
+			var offset := point - center
+			if offset.length() < 7.0 or offset.length() > 15.0 or point.distance_to(player.position) < 4.0: continue
+			var side := (0 if offset.x > 0 else 2) if absf(offset.x) > absf(offset.z) else (1 if offset.z > 0 else 3)
+			pools[side].append(point)
+	enemies_left = 0
+	_batch_queue.clear()
+	_batch_number = 0
+	_batch_alive = 0
+	_batch_pending = false
+	var per_side := 8 + (maxi(1, battle_wave) - 1) * 2 if combat_only else 8
+	for side in range(4): rogue._shuffle(pools[side])
+	# Interleave the four sides; each group of eight contains two from each side.
+	for index in range(per_side):
+		for side in range(4):
+			if index >= pools[side].size(): continue
+			_batch_queue.append({"point":pools[side][index], "side":side, "index":index})
+	enemies_left = _batch_queue.size()
+	_batch_total = ceili(enemies_left / 8.0)
+	set_meta("opening_wave_total", enemies_left)
+	if combat_only:
+		_spawn_next_batch()
+	else:
+		while not _batch_queue.is_empty(): _spawn_crowd_enemy(_batch_queue.pop_front(), false)
+
+func _spawn_crowd_enemy(plan: Dictionary, preview: bool) -> void:
+	var enemy := CharacterBody3D.new()
+	enemy.set_script(ECHO)
+	var elite := combat_only and battle_wave in [3, 5] and int(plan.index) == 0
+	enemy.max_health = 60.0 if elite else (18.0 + maxi(0, battle_wave - 1) * 2.0)
+	enemy.attack_damage = 6.0 if elite else (3.0 + floorf(maxi(0, battle_wave - 1) / 2.0))
+	if elite: enemy.scale = Vector3.ONE * 1.2
+	enemy.move_speed = rogue.rng.randf_range(1.5, 2.0)
+	enemy.role = (int(plan.index) + 1 + int(plan.side)) % 3
+	enemy.position = plan.point
+	enemy.set_meta("spawn_side", plan.side)
+	enemy.defeated.connect(_echo_defeated)
+	world.add_child(enemy)
+	if preview: stage_spawn(enemy, 0.0)
+
+func _spawn_next_batch() -> void:
+	_batch_pending = false
+	if won or player.health <= 0 or _batch_queue.is_empty() or _batch_alive > 0: return
+	_batch_number += 1
+	var count := mini(8, _batch_queue.size())
+	_batch_alive = count
+	for i in range(count): _spawn_crowd_enemy(_batch_queue.pop_front(), true)
+
 func _echo_defeated(_enemy: Node) -> void:
 	enemies_left -= 1
+	if combat_only and rogue != null:
+		_batch_alive -= 1
+		if _batch_alive == 0 and not _batch_queue.is_empty() and not _batch_pending:
+			_batch_pending = true
+			call_deferred("_spawn_next_batch")
 	if enemies_left <= 0:
+		if combat_only and rogue != null:
+			if rogue.pending_reward or _battle_transition_pending: return
+			rogue.award_combat(battle_wave in [3, 5])
+			return
 		office_fought = true
+		if rogue != null:
+			rogue.office_reward()
+			return
 		hud.call("dialog", "出口已打开", "那些重复的结论暂时安静下来。\n你可以回看还没读过的资料，或者从南侧中央走廊走向雨后的街道。", ["继续"], [Callable()])
+
+func queue_next_battle() -> void:
+	if _battle_transition_pending or won or player.health <= 0.0: return
+	_battle_transition_pending = true
+	skills.clear_effects()
+	# Pause-aware intermission; choosing a reward is the only required interruption.
+	await get_tree().create_timer(0.8, false).timeout
+	if won or player.health <= 0.0:
+		_battle_transition_pending = false
+		return
+	_battle_transition_pending = false
+	if battle_wave >= battle_wave_limit:
+		office_fought = true
+		player.position = _at(Vector2(768, 730))
+		_last_player_position = player.position
+		player.velocity = Vector3.ZERO
+		_start_boss()
+	else:
+		battle_wave += 1
+		_start_crowd_wave()
 
 func _build_street() -> void:
 	_add_interaction("工资停发通知", _at(Vector2(1270, 665)), _street_record.bind(0))
@@ -326,6 +470,14 @@ func _street_record(id: int) -> void:
 	hud.call("dialog", "雨后街道", body, ["继续往出租屋走"], [Callable()])
 
 func _enter_apartment() -> void:
+	if rogue != null and rogue.depth < 5:
+		rogue.route()
+		return
+	if rogue != null and (rogue.in_combat or rogue.pending_reward):
+		return
+	_enter_apartment_direct()
+
+func _enter_apartment_direct() -> void:
 	_load_stage(2)
 	hud.call("dialog", "出租屋 · 经济失意", "五类账单挡住了房间。\n靠近按 E 查看账单，或用攻击撕开纸墙。桌面原件始终可以回看。\n每解开一张账单，红色盖章会更多地占据房间。", ["查看这间屋子"], [Callable()])
 
@@ -379,18 +531,20 @@ func _original_bills() -> void:
 func _start_boss() -> void:
 	stamper = StaticBody3D.new()
 	stamper.set_script(STAMPER)
-	stamper.position = _at(Vector2(768, 590))
+	stamper.position = _at(Vector2(768, 565 if combat_only else 590))
 	stamper.connect("defeated", _victory)
 	stamper.connect("phase_changed", _boss_phase_changed)
 	world.add_child(stamper)
 	for i in range(14):
 		var mark := _add_stamp(Vector3(-13 + i * 2, 4.5, -8), "撤销", false)
 		mark.rotation_degrees.x = 180
+	if combat_only: return
 	hud.call("dialog", "盖章者 · 错误的因果合并", "“迟交”“患病”“被辞退”和“无用”被压成了同一个结论。\n\n躲开矩形红框的延迟落印；落印后攻击印章柄，拆开外壳。\n纸墙沿直线推进，可以用攻击撕开。", ["进入战斗"], [Callable()])
 
 func _boss_phase_changed(_phase: int) -> void:
 	_time_to_shrink = 4.0
 	_draw_danger_edges()
+	if combat_only: return
 	hud.call("dialog", "纸芯与铁丝黑雾", "外壳被拆开了。账页开始从四边向内收拢。\n红色方格区域会造成伤害；留在内部，用攻击撕开移动纸墙，继续攻击纸芯。", ["继续战斗"], [Callable()])
 
 func warning_rect(at: Vector3, size: Vector2, delay: float = 1.05) -> MeshInstance3D:
@@ -449,6 +603,9 @@ func _victory() -> void:
 	for child in world.get_children():
 		if child.get_script() == PAPER:
 			child.queue_free()
+	if combat_only:
+		hud.call("dialog", "清场完成", "连续击败五波敌人与盖章者。\n\n" + (rogue.summary() if rogue != null else "练习结束"), ["再来一局", "返回标题"], [Callable(hud, "restart"), Callable(hud, "to_menu")])
+		return
 	var body := "病情确实影响了工作功能，沟通与支持的缺失、公司的选择和经济压力也共同塑造了后果。\n\n失业不能被直接盖成“我没有价值”。\n\n获得【因果记录卡】\n功能困难 ≠ 环境选择 ≠ 个人价值\n\n办公室资料：%d / 6；账单原件：5 / 5（可在调查记录回看）。" % records.size()
 	hud.call("dialog", "因果记录卡 · 被撤销的不是我", body, ["留在房间回看记录", "重新调查", "返回标题"], [Callable(), Callable(hud, "restart"), Callable(hud, "to_menu")])
 
@@ -553,3 +710,22 @@ func _box(node_name: String, size: Vector3, at: Vector3, color: Color, solid: bo
 		body.add_child(collision)
 		target.add_child(body)
 	return mesh
+
+
+func stage_spawn(enemy: Node3D, delay: float) -> void:
+	enemy.hide()
+	enemy.set_physics_process(false)
+	enemy.collision_layer = 0
+	await get_tree().create_timer(delay + 0.05, false).timeout
+	if not is_instance_valid(enemy) or enemy._dead or won: return
+	var marks: Array[Node] = []
+	for side in [-1.0, 1.0]:
+		marks.append(_box("SpawnFrame", Vector3(1.2, 0.04, 0.045), enemy.position + Vector3(0, 0.07, side * 0.6), Color(1, 0.57, 0.08)))
+		marks.append(_box("SpawnFrame", Vector3(0.045, 0.04, 1.2), enemy.position + Vector3(side * 0.6, 0.07, 0), Color(1, 0.57, 0.08)))
+	await get_tree().create_timer(0.65, false).timeout
+	for mark in marks:
+		if is_instance_valid(mark): mark.queue_free()
+	if not is_instance_valid(enemy) or enemy._dead or won: return
+	enemy.show()
+	enemy.collision_layer = 2
+	enemy.set_physics_process(true)

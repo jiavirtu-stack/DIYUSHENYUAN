@@ -39,19 +39,37 @@ func _run() -> void:
 	middle.button_index = MOUSE_BUTTON_MIDDLE
 	middle.pressed = true
 	chapter.hud._unhandled_input(middle)
-	assert(chapter.hud._locked == 0 and skills.aim_index == -1, "First middle click only locks a card")
-	middle.pressed = false
-	chapter.hud._unhandled_input(middle)
-	middle.pressed = true
-	chapter.hud._unhandled_input(middle)
-	assert(skills.aim_index == 0, "Second press must begin aiming")
+	assert(skills.aim_index == 0, "First middle press immediately aims")
 	var right := InputEventMouseButton.new()
 	right.button_index = MOUSE_BUTTON_RIGHT
 	right.pressed = true
 	chapter.hud._unhandled_input(right)
+	assert(skills.aim_index == 0, "Right button must not cancel aiming")
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	wheel.pressed = true
+	chapter.hud._unhandled_input(wheel)
+	assert(chapter.hud._selected == 1 and skills.aim_index == 1, "Wheel while holding replaces the preview")
+	skills.cooldowns[2] = 5.0
+	chapter.hud._unhandled_input(wheel)
+	assert(skills.aim_index == -1, "Switching to a cooling card cancels the previous preview")
 	middle.pressed = false
 	chapter.hud._unhandled_input(middle)
-	assert(chapter.hud._locked == -1 and skills.cooldowns[0] == 0.0, "Right cancel followed by middle release must not cast")
+	assert(skills.cooldowns[0] == 0.0 and skills.cooldowns[1] == 0.0, "Release must not cast the previous card")
+	skills.reset_cooldowns()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	chapter.hud._unhandled_input(wheel)
+	chapter.hud._unhandled_input(wheel)
+	assert(chapter.hud._selected == 0, "Wheel remains available after release")
+	middle.pressed = true
+	chapter.hud._unhandled_input(middle)
+	middle.pressed = false
+	chapter.hud._unhandled_input(middle)
+	assert(skills.cooldowns[0] > 5.9 and skills.aim_index == -1, "Middle release casts once and ends aiming")
+	chapter.hud._unhandled_input(middle)
+	chapter.hud._unhandled_input(wheel)
+	assert(chapter.hud._selected == 4, "Can switch immediately after casting")
+	await _ready_to_cast()
 	assert(skills.begin_aim(0))
 	skills.cancel_aim()
 	assert(skills.cooldowns[0] == 0.0, "Canceled aim must not consume cooldown")

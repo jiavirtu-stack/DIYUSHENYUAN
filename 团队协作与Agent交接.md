@@ -6,8 +6,8 @@
 
 - 引擎：Godot 4.x（当前项目使用 Godot 4.7.2）。
 - 类型：暗黑童话风 2.5D 动作 Roguelite 原型。
-- 当前主流程：主菜单 → 第一关《被撤销的一天》→ 办公室调查/残影战 → 雨后街道 → 出租屋账单 → 盖章者 Boss 战。
-- 新关卡入口：`res://scenes/chapter01/revoked_day.tscn`；实现与体验说明：`docs/第一关_被撤销的一天_实现说明.md`。旧小兵/Boss MVP 场景可单独运行。
+- 当前正式流程：主菜单 → 中央出生并选技能 → 五波分批清场与战后强化 → 盖章者 Boss → 结算。没有探索、账单或选路前置。首波32只、每批8只；必须清空当前批次才刷下一批。
+- 新关卡入口：`res://scenes/chapter01/revoked_day.tscn`；实现与体验说明：`docs/纯战斗模式_实现说明.md`。旧小兵/Boss MVP 场景可单独运行。
 - 主场景：`res://scenes/main_menu.tscn`。
 - 项目配置：`project.godot`；全局运行状态：`scripts/run_state.gd`。
 - 详细背景：先读 `README.md`、`README_新手启动指南.md`、`docs/` 下策划/资产/QA 文档。
@@ -17,9 +17,9 @@
 将下面内容交给你的编码 Agent，并同时开放本 Git 仓库：
 
 ```text
-你将协作 Godot 项目《烛渊：仪式残响》。先阅读仓库根目录的“团队协作与Agent交接.md”、docs/第一关_被撤销的一天_实现说明.md，以及与你任务相关的 docs/ 文档。项目运行主场景是 res://scenes/main_menu.tscn，当前第一关入口为 res://scenes/chapter01/revoked_day.tscn；Godot 版本为 4.7.2。当前第一关是可玩流程原型，几何美术与战斗平衡仍需迭代。
+你将协作 Godot 项目《烛渊：仪式残响》。先阅读仓库根目录的“团队协作与Agent交接.md”、docs/纯战斗模式_实现说明.md，以及与你任务相关的 docs/ 文档。项目运行主场景是 res://scenes/main_menu.tscn，当前第一关入口为 res://scenes/chapter01/revoked_day.tscn；Godot 版本为 4.7.2。当前第一关是可玩流程原型，几何美术与战斗平衡仍需迭代。
 
-开始前先检查 git status 和当前分支。不要覆盖或丢弃其他人的未提交改动；不要自行重置、rebase 公共分支或强推。每项工作使用独立 feature/... 或 fix/... 分支。先定位现有实现并复用项目结构，再做最小完整改动；如改动输入、场景流程、资源路径或玩家/Boss接口，检查其调用方。
+开始前先检查 git status 和当前分支。不要覆盖或丢弃其他人的未提交改动；不要自行重置、rebase 公共分支或强推。每项工作使用独立 codex/简短任务名 分支。先定位现有实现并复用项目结构，再做最小完整改动；如改动输入、场景流程、资源路径或玩家/Boss接口，检查其调用方。
 
 未获任务明确要求时，不要删除或改写策划文档、资产来源说明、QA记录，不要引入未经许可的第三方/参考视频素材，不要提交 .godot/、导出包、临时截图或密钥。Godot UID 文件若由编辑器生成且对应资源应纳入仓库，可一并提交。
 
@@ -28,7 +28,7 @@
 
 ## 首次加入项目
 
-1. 仓库管理员在 GitHub/GitLab 建立私有仓库，并邀请成员；把仓库地址发给团队。
+1. 使用现有GitHub仓库；需要直接推送权限的成员由管理员邀请，其他成员可通过fork提交PR。
 2. 成员安装 Git、Git LFS（仅当团队选择 LFS 管理大文件时）和 Godot 4.7.2。
 3. 克隆项目：
 
@@ -41,12 +41,12 @@
 5. 每次开始任务前同步主分支并开个人分支：
 
    ```bash
-   git switch main
+   git switch codex/team-collaboration
    git pull --ff-only
-   git switch -c feature/简短任务名
+   git switch -c codex/简短任务名
    ```
 
-   如果远端默认分支叫 `master`，将上面的 `main` 换成 `master`。
+   当前默认分支为 `codex/team-collaboration`，不要假设默认分支名为 main。
 
 ## 日常协作流程
 
@@ -76,7 +76,7 @@
 
 - 当前工作分支：`codex/team-collaboration`。
 - 该分支承载近期关卡与协作文档相关改动；提交/推送前请先逐项审阅 `git status` 与 `git diff`。
-- 私有仓库：`https://github.com/jiavirtu-stack/DIYUSHENYUAN`；本机已配置 origin。新成员获得仓库权限后克隆：
+- 当前公开仓库：`https://github.com/jiavirtu-stack/DIYUSHENYUAN`；本机已配置 origin。新成员获得仓库权限后克隆：
 
   ```bash
   git clone --branch codex/team-collaboration https://github.com/jiavirtu-stack/DIYUSHENYUAN.git
@@ -94,3 +94,18 @@
 参考资料：
 完成后请提供：改动摘要、文件清单、体验步骤、验证结果、PR 链接。
 ```
+
+
+## 本次交接：2026-11-10
+
+正式玩法与协作起点见根目录 `START_HERE.md`。
+
+- 刷怪与波次：`scripts/chapter01/revoked_day.gd`。当前波待出场计划和当前批次存活数分别管理，禁止改回定时叠加刷怪。
+- 敌人AI：`scripts/chapter01/office_echo.gd`，近战四前排、外围预留站位、远程与法师保持距离和固定前摇。
+- 玩家与手感：`scripts/player.gd`、`scripts/combat_feedback.gd`。章节近战攻速倍率2.0、范围倍率1.35，近战局部顿帧50/83毫秒。
+- 卡牌与视觉：`scripts/cards/card_skills.gd`。滚轮选择、按住中键瞄准、松开施放，不设锁定和右键取消。暗影骷髅替代追索火种；雷贯光波使用用户序列帧；通用法阵仅视觉、不添加伤害。
+- 技能与遗物奖励：`scripts/rogue/chapter_run.gd`。
+- 规则实验室：`scenes/chapter01/beam_rule_lab.tscn`，分叉、反弹、贯穿、回旋和爆裂可叠加；目前不等同于正式关卡全部道具均已规则化。
+- 20技能文档是设计提案，正式可玩技能仍为五张。局内构筑暂不支持存档和跨章节继承。
+- `提供的素材/` 为本机原始素材库，`新建游戏项目/` 为重复空项目，不在本次上传中。当前运行依赖均在主工程 `assets/` 内。不要引用协作者电脑的绝对路径。
+- 本机Godot可执行文件路径不可硬编码进团队代码。自动验证示例：`godot --headless --path . --script res://tests/clear_batch_smoke.gd`。

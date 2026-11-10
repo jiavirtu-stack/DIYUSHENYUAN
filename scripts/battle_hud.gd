@@ -21,8 +21,7 @@ var _card_panels: Array[PanelContainer] = []
 var _card_status_labels: Array[Label] = []
 var _card_hint: Label
 var _selected_card := 0
-var _locked_card := -1
-var _lock_click_release_pending := false
+var _middle_held := false
 var _card_titles := ["直线光波", "灼热新星", "裂地冲击", "追踪灵弹", "暗影牢笼"]
 var _card_symbols := ["Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ"]
 var _debug_panel: PanelContainer
@@ -116,7 +115,7 @@ func _build_ui() -> void:
 	_card_hand.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(_card_hand)
 	_build_card_hand()
-	_card_hint = _label("滚轮选择 · 中键单击锁定 · 再按住中键瞄准、松开发射 · 右键解除 · F1 布局调试", 15, Color(0.82,0.75,0.65))
+	_card_hint = _label("滚轮选择 · 按住中键瞄准、松开发射 · F1 布局调试", 15, Color(0.82,0.75,0.65))
 	_card_hint.anchor_left=0.5; _card_hint.anchor_right=0.5; _card_hint.anchor_top=1; _card_hint.anchor_bottom=1; _card_hint.offset_left=-560; _card_hint.offset_right=560; _card_hint.offset_top=-40; _card_hint.offset_bottom=-12; _card_hint.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER; _card_hint.mouse_filter=Control.MOUSE_FILTER_IGNORE; root.add_child(_card_hint)
 	_build_card_layout_tool(root)
 	pause_panel = _make_modal(root)
@@ -183,31 +182,16 @@ func _update_card_selection() -> void:
 	_apply_card_layout()
 	for index in range(_card_panels.size()):
 		var card := _card_panels[index]
-		var is_locked := index == _locked_card
-		var is_selected := index == _selected_card and _locked_card < 0
-		card.add_theme_stylebox_override("panel", _card_style(is_locked or is_selected))
-		card.z_index = 20 if is_locked or is_selected else index
+		var is_selected := index == _selected_card
+		card.add_theme_stylebox_override("panel", _card_style(is_selected))
+		card.z_index = 20 if is_selected else index
 		var arc_position := absf(float(index) - 2.0) / 2.0
 		var base_y := float(_layout_values["fan_lift"]) * arc_position
-		if is_locked:
-			card.position.y = base_y - 52.0
-			card.scale = Vector2.ONE * 1.12
-			card.modulate = Color.WHITE
-		elif _locked_card >= 0:
-			card.position.y = base_y + 48.0
-			card.scale = Vector2.ONE * 0.92
-			card.modulate = Color(0.58, 0.55, 0.52, 0.78)
-		else:
-			card.position.y = base_y - (24.0 if is_selected else 0.0)
-			card.scale = Vector2.ONE * (1.06 if is_selected else 1.0)
-			card.modulate = Color.WHITE
+		card.position.y = base_y - (24.0 if is_selected else 0.0)
+		card.scale = Vector2.ONE * (1.06 if is_selected else 1.0)
+		card.modulate = Color.WHITE
 		if index < _card_status_labels.size():
-			if is_locked:
-				_card_status_labels[index].text = "已锁定"
-			elif is_selected:
-				_card_status_labels[index].text = "当前选择"
-			else:
-				_card_status_labels[index].text = "待选择" if _locked_card < 0 else "收起"
+			_card_status_labels[index].text = "当前选择" if is_selected else "待选择"
 	var player_node := get_parent().get_node_or_null("Player")
 	if player_node != null and player_node.has_method("set_selected_card"):
 		player_node.call("set_selected_card", _selected_card)
@@ -258,7 +242,7 @@ func _build_card_layout_tool(root: Control) -> void:
 	_debug_panel.add_child(content)
 	var heading := _label("卡牌扇形布局", 20, Color(0.94, 0.76, 0.46))
 	content.add_child(heading)
-	var description := _label("未锁定时滚轮切牌；中键锁定，右键解除。", 13, Color(0.68, 0.62, 0.55))
+	var description := _label("滚轮随时切牌；按住中键瞄准，松开施放。", 13, Color(0.68, 0.62, 0.55))
 	content.add_child(description)
 	_add_layout_slider(content, "水平位置", "offset_x", -400.0, 400.0, 5.0, " px")
 	_add_layout_slider(content, "垂直位置", "offset_y", -250.0, 70.0, 5.0, " px")
@@ -363,49 +347,32 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseButton:
 		var mouse_event := event as InputEventMouseButton
-		if mouse_event.button_index == MOUSE_BUTTON_WHEEL_UP and mouse_event.pressed:
-			if _locked_card < 0:
-				_selected_card = posmod(_selected_card - 1, _card_titles.size())
-				_update_card_selection()
-			else:
-				_card_hint.text = "「%s」已锁定：右键取消后才能切换卡牌" % _card_titles[_locked_card]
-			get_viewport().set_input_as_handled()
-		elif mouse_event.button_index == MOUSE_BUTTON_WHEEL_DOWN and mouse_event.pressed:
-			if _locked_card < 0:
-				_selected_card = posmod(_selected_card + 1, _card_titles.size())
-				_update_card_selection()
-			else:
-				_card_hint.text = "「%s」已锁定：右键取消后才能切换卡牌" % _card_titles[_locked_card]
-			get_viewport().set_input_as_handled()
-		elif mouse_event.button_index == MOUSE_BUTTON_RIGHT and mouse_event.pressed and _locked_card >= 0:
-			var player_node := get_parent().get_node_or_null("Player")
-			if player_node != null and player_node.has_method("cancel_beam_charge"):
+		var player_node := get_parent().get_node_or_null("Player")
+		if mouse_event.pressed and mouse_event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+			if player_node != null:
 				player_node.call("cancel_beam_charge")
-			_locked_card = -1
-			_lock_click_release_pending = false
+			_selected_card = posmod(_selected_card + (-1 if mouse_event.button_index == MOUSE_BUTTON_WHEEL_UP else 1), _card_titles.size())
 			_update_card_selection()
-			_card_hint.text = "滚轮选择 · 中键单击锁定 · 再按住中键瞄准、松开发射 · 右键解除 · F1 布局调试"
+			if _middle_held and _selected_card == 0 and player_node != null:
+				player_node.call("begin_beam_charge")
 			get_viewport().set_input_as_handled()
 		elif mouse_event.button_index == MOUSE_BUTTON_MIDDLE:
-			var player_node := get_parent().get_node_or_null("Player")
 			if mouse_event.pressed:
-				if _locked_card < 0:
-					_locked_card = _selected_card
-					_lock_click_release_pending = true
-					_update_card_selection()
-					_card_hint.text = "已锁定「%s」；松开后再按住中键瞄准、松开发射 · 右键解除" % _card_titles[_locked_card]
+				_middle_held = true
+				if _selected_card == 0 and player_node != null:
+					player_node.call("begin_beam_charge")
 				else:
-					if _locked_card == 0 and player_node != null:
-						player_node.call("begin_beam_charge")
-					else:
-						_card_hint.text = "「%s」已锁定，但该卡效果尚未制作 · 右键解除" % _card_titles[_locked_card]
-				get_viewport().set_input_as_handled()
-			elif _lock_click_release_pending:
-				_lock_click_release_pending = false
-				get_viewport().set_input_as_handled()
-			elif _locked_card >= 0 and player_node != null and player_node.has_method("release_beam"):
-				player_node.call("release_beam")
-				get_viewport().set_input_as_handled()
+					_card_hint.text = "「%s」效果尚未制作" % _card_titles[_selected_card]
+			elif _middle_held:
+				_middle_held = false
+				if player_node != null:
+					player_node.call("release_beam")
+			get_viewport().set_input_as_handled()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		_middle_held = false
+
 
 
 func _card() -> PanelContainer:
